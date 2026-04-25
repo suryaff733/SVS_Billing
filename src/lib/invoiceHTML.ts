@@ -157,6 +157,28 @@ export function invHTML(d: any) {
   }
   totHtml += '<div style="display:flex;justify-content:space-between;padding:8px 10px;font-size:13px;font-weight:700;color:#003399;background:#f0f4ff"><span>GRAND TOTAL</span><span>' + fmtR(d.grand) + '</span></div>';
 
+  var stampHtml = '';
+  if (d.type === 'gst') {
+    stampHtml = '<div style="display:flex;gap:30px;align-items:flex-end;">' +
+      '<div style="text-align:center;padding-top:4px;border-top:1px solid #003399;min-width:120px;">Receiver\'s Signature</div>' +
+      '<div style="position:relative;display:inline-block;text-align:center;color:#003399;font-family:Arial,sans-serif;line-height:1.2;font-size:10px;">' +
+      '<div style="font-weight:700;font-size:11px;">For SRI VENKATA SURYA</div>' +
+      '<div style="font-weight:700;">Electrical &amp; Motor Mechanical Works</div>' +
+      '<div style="height:35px;position:relative;">' +
+        '<div style="position:absolute;top:-5px;left:50%;transform:translateX(-50%) rotate(-5deg);font-family:\'Brush Script MT\', \'Lucida Handwriting\', cursive;font-size:24px;color:#001a66;white-space:nowrap;opacity:0.85;text-shadow:0 0 1px rgba(0,26,102,0.3);">S. Venkateshwar Rao</div>' +
+      '</div>' +
+      '<div>Authorised Signatory</div>' +
+      '<div style="font-weight:700;">S. Venkateshwar Rao</div>' +
+      '<div>Proprietor</div>' +
+      '</div>' +
+      '</div>';
+  } else {
+    stampHtml = '<div style="text-align:right">' +
+      '<div style="color:#CC0000;font-size:9.5px;margin-bottom:12px">For SRI VENKATA SURYA ELECTRICAL &amp; MECHANICAL WORKS</div>' +
+      '<div style="border-top:1px solid #003399;padding-top:4px">Receiver\'s Signature &nbsp;&nbsp;&nbsp;&nbsp; Authorised Signatory</div>' +
+      '</div>';
+  }
+
   var itemRows = (d.rows || []).map(function (it: any, i: number) {
     var q = parseFloat(it.q) || 0, r = parseFloat(it.r) || 0, a = parseFloat(it.a) || 0;
     var rowAmt = (q > 0 && r > 0) ? q * r : a;
@@ -248,10 +270,7 @@ export function invHTML(d: any) {
     '<span style="color:#003399;font-weight:700;font-size:13px">TEXMO</span>' +
     '<span style="color:#006600;font-weight:700;font-size:13px">AQUA GROUP</span>' +
     '</div>' +
-    '<div style="text-align:right">' +
-    '<div style="color:#CC0000;font-size:9.5px;margin-bottom:12px">For SRI VENKATA SURYA ELECTRICAL &amp; MECHANICAL WORKS</div>' +
-    '<div style="border-top:1px solid #003399;padding-top:4px">Receiver\'s Signature &nbsp;&nbsp;&nbsp;&nbsp; Authorised Signatory</div>' +
-    '</div>' +
+    stampHtml +
     '</div>' +
     '<div style="background:#E8A000;height:6px;flex-shrink:0"></div>' +
     '</div></body></html>';
