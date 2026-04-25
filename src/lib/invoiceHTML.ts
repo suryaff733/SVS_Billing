@@ -165,11 +165,7 @@ export function invHTML(d: any) {
       '<div style="font-weight:700;font-size:11px;">For SRI VENKATA SURYA</div>' +
       '<div style="font-weight:700;">Electrical &amp; Motor Mechanical Works</div>' +
       '<div style="height:35px;position:relative;">' +
-        '<div style="position:absolute;top:-20px;left:50%;transform:translateX(-50%) rotate(-2deg);width:120px;height:60px;">' +
-        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 80" width="100%" height="100%" style="opacity:0.85; filter: drop-shadow(0px 0px 1px rgba(0,26,102,0.4));">' +
-        '<path d="M 35 55 C 20 50, 25 15, 50 15 C 70 15, 75 35, 55 50 C 45 60, 30 45, 55 35 C 75 25, 95 30, 85 55 C 75 75, 65 60, 80 40 C 100 10, 115 15, 125 35 C 135 55, 120 70, 105 55 C 90 40, 120 20, 140 40 C 160 60, 145 75, 165 65 C 180 55, 195 40, 200 30" fill="none" stroke="#001a66" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" />' +
-        '</svg>' +
-        '</div>' +
+        '<div style="position:absolute;top:-5px;left:50%;transform:translateX(-50%) rotate(-5deg);font-family:\'Brush Script MT\', \'Lucida Handwriting\', cursive;font-size:24px;color:#001a66;white-space:nowrap;opacity:0.85;text-shadow:0 0 1px rgba(0,26,102,0.3);">S. Venkateshwar Rao</div>' +
       '</div>' +
       '<div>Authorised Signatory</div>' +
       '<div style="font-weight:700;">S. Venkateshwar Rao</div>' +
