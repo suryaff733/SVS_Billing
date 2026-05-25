@@ -41,12 +41,17 @@ export default function App() {
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const [previewHtml, setPreviewHtml] = useState("");
 
+  const [signatureUrl, setSignatureUrl] = useState<string>("");
+  const [isUploadingSig, setIsUploadingSig] = useState(false);
+
   useEffect(() => {
     try {
       const saved = JSON.parse(localStorage.getItem('svs4') || '[]');
       setBills(saved);
       const nums = saved.map((b: any) => parseInt(b.no)).filter((n: number) => !isNaN(n));
       setNo(String(nums.length ? Math.max(...nums) + 1 : 1).padStart(3, '0'));
+      const savedSig = localStorage.getItem('svs_sig');
+      if (savedSig) setSignatureUrl(savedSig);
     } catch (e) {}
     setDate(new Date().toISOString().split('T')[0]);
   }, []);
@@ -87,8 +92,39 @@ export default function App() {
   const getData = () => ({
     type: btype, no, date, po, transport, cname, caddr, cgstin,
     sname, saddr, sgstin, rows, applyGst: isGst,
-    sub, cgst, sgst, grand, saved: new Date().toISOString()
+    sub, cgst, sgst, grand, saved: new Date().toISOString(), signatureUrl
   });
+
+  const handleSignatureUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsUploadingSig(true);
+    try {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onloadend = async () => {
+        const base64data = reader.result;
+        const res = await fetch("/api/upload-signature", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ image: base64data }),
+        });
+        const data = await res.json();
+        if (data.url) {
+          setSignatureUrl(data.url);
+          localStorage.setItem('svs_sig', data.url);
+        } else {
+          alert("Upload failed: " + (data.error || "Unknown error"));
+        }
+        setIsUploadingSig(false);
+      };
+    } catch (err) {
+      console.error(err);
+      setIsUploadingSig(false);
+      alert("Upload failed");
+    }
+  };
 
   const saveBill = () => {
     const d = getData();
@@ -117,6 +153,7 @@ export default function App() {
     setSgstin(d.sgstin || '');
     setApplyGst(!!d.applyGst);
     setRows(d.rows || []);
+    setSignatureUrl(d.signatureUrl || localStorage.getItem('svs_sig') || "");
     setActiveSec('create');
   };
 
@@ -143,7 +180,7 @@ export default function App() {
     if (activeSec === 'preview') {
       setPreviewHtml(invHTML(getData()));
     }
-  }, [activeSec, btype, no, date, po, transport, cname, caddr, cgstin, sname, saddr, sgstin, rows, applyGst]);
+  }, [activeSec, btype, no, date, po, transport, cname, caddr, cgstin, sname, saddr, sgstin, rows, applyGst, signatureUrl]);
 
   const downloadPDF = () => {
     setIsDownloading(true);
@@ -272,6 +309,20 @@ export default function App() {
               <div className="tline"><span className="lbl">CGST @ 9%</span><span>{fmtD(cgst)}</span></div>
               <div className="tline"><span className="lbl">SGST @ 9%</span><span>{fmtD(sgst)}</span></div>
               <div className="tline grand"><span className="lbl">Grand Total</span><span>{fmtD(grand)}</span></div>
+            </div>
+          </div>
+          <div className="card">
+            <div className="card-title">Settings & Signature</div>
+            <div className="field">
+              <label>Authorized Signatory Signature (Image)</label>
+              <input type="file" accept="image/*" onChange={handleSignatureUpload} disabled={isUploadingSig} />
+              {isUploadingSig && <div style={{ fontSize: "12px", color: "#003399", marginTop: "4px" }}>Uploading signature...</div>}
+              {signatureUrl && (
+                <div style={{ marginTop: "10px", display: "flex", alignItems: "center", gap: "10px" }}>
+                  <img src={signatureUrl} alt="Signature" style={{ maxHeight: "45px", border: "1px solid #e2e8f0", padding: "2px", borderRadius: "4px", background: "#fff" }} />
+                  <button className="btn btn-sm btn-red" onClick={() => { setSignatureUrl(''); localStorage.removeItem('svs_sig'); }}>Remove</button>
+                </div>
+              )}
             </div>
           </div>
           <div className="act-row">

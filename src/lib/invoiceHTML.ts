@@ -10,6 +10,48 @@ export function esc(s: string) {
   return (s || '').toString().replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
+export function numberToWords(num: number): string {
+  if (num === 0) return "Zero";
+  const a = ["", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten", "Eleven", "Twelve", "Thirteen", "Fourteen", "Fifteen", "Sixteen", "Seventeen", "Eighteen", "Nineteen"];
+  const b = ["", "", "Twenty", "Thirty", "Forty", "Fifty", "Sixty", "Seventy", "Eighty", "Ninety"];
+  
+  const inWords = (n: number): string => {
+    let str = "";
+    if (n > 9999999) {
+      str += inWords(Math.floor(n / 10000000)) + " Crore ";
+      n %= 10000000;
+    }
+    if (n > 99999) {
+      str += inWords(Math.floor(n / 100000)) + " Lakh ";
+      n %= 100000;
+    }
+    if (n > 999) {
+      str += inWords(Math.floor(n / 1000)) + " Thousand ";
+      n %= 1000;
+    }
+    if (n > 99) {
+      str += inWords(Math.floor(n / 100)) + " Hundred ";
+      n %= 100;
+    }
+    if (n > 0) {
+      if (n < 20) str += a[n] + " ";
+      else {
+        str += b[Math.floor(n / 10)] + " ";
+        if (n % 10 > 0) str += a[n % 10] + " ";
+      }
+    }
+    return str.trim();
+  };
+
+  const whole = Math.floor(num);
+  const fraction = Math.round((num - whole) * 100);
+  let res = inWords(whole);
+  if (fraction > 0) {
+    res += " and " + inWords(fraction) + " Paise";
+  }
+  return res + " Only";
+}
+
 export function invHTML_simple(d: any) {
   var title = d.type === 'quotation' ? 'QUOTATION' : 'CASH MEMO / BILL';
   var dateStr = (d.date || '').split('-').reverse().join('/');
@@ -124,20 +166,27 @@ export function invHTML_simple(d: any) {
     '</div>' +
 
     '<div style="display:flex;justify-content:space-between;align-items:flex-end;margin-top:16px;">' +
-    '<div style="display:flex;gap:12px;align-items:center;">' +
+    '<div style="display:flex;gap:18px;align-items:center;">' +
     '<div style="display:flex;flex-direction:column;align-items:center;">' +
-    '<div style="width:0;height:0;border-left:12px solid transparent;border-right:12px solid transparent;border-bottom:20px solid #E63900;margin-bottom:2px;"></div>' +
-    '<span style="color:#E63900;font-weight:900;font-size:12px;">AQUATEX</span>' +
+    '<div style="width:0;height:0;border-left:14px solid transparent;border-right:14px solid transparent;border-bottom:24px solid #E63900;margin-bottom:4px;"></div>' +
+    '<span style="color:#E63900;font-weight:900;font-size:14px;letter-spacing:0.5px;line-height:1;display:inline-block;">AQUATEX</span>' +
     '</div>' +
     '<div style="display:flex;flex-direction:column;align-items:center;">' +
-    '<div style="border:2px solid #E63900;color:#E63900;font-weight:900;font-size:12px;padding:2px 8px;border-radius:50%/100%;letter-spacing:1px;transform:scaleX(1.2);">TEXMO</div>' +
+    '<div style="border:2px solid #E63900;color:#E63900;font-weight:900;font-size:14px;padding:6px 12px 4px;border-radius:8px;letter-spacing:1px;margin-bottom:2px;display:inline-block;line-height:1;">TEXMO</div>' +
     '</div>' +
-    '<div style="display:flex;flex-direction:column;align-items:center;line-height:1.2;margin-left:12px;">' +
-    '<span style="background:#E63900;color:#fff;padding:2px 14px;border-radius:12px;font-weight:900;font-size:12px;">AQUA GROUP</span>' +
-    '<span style="color:#E63900;font-size:10px;font-style:italic;margin-top:2px;">Pumps you can rely on</span>' +
+    '<div style="display:flex;flex-direction:column;align-items:center;">' +
+    '<div style="background:#E63900;color:#fff;padding:6px 14px 4px;border-radius:8px;font-weight:900;font-size:14px;letter-spacing:0.5px;margin-bottom:4px;display:inline-block;line-height:1;">AQUA GROUP</div>' +
+    '<span style="color:#E63900;font-size:12px;font-style:italic;line-height:1;">Pumps you can rely on</span>' +
     '</div>' +
     '</div>' +
-    '<div style="color:#E63900;font-size:14px;font-weight:700;margin-bottom:8px;text-align:right;">For SRI VENKATA SURYA ELECTRICAL<br>&amp; MOTOR MECHANICAL WORKS</div>' +
+    '<div style="display:flex;flex-direction:column;align-items:flex-end;">' +
+    '<div style="color:#E63900;font-size:14px;font-weight:700;margin-bottom:4px;text-align:right;">For SRI VENKATA SURYA ELECTRICAL<br>&amp; MOTOR MECHANICAL WORKS</div>' +
+    (d.signatureUrl 
+      ? '<img src="' + esc(d.signatureUrl) + '" style="max-height:45px;max-width:140px;object-fit:contain;margin:4px 0;" />'
+      : '<div style="height:30px;"></div>'
+    ) +
+    '<div style="color:#000;font-size:12px;font-weight:700;">Authorised Signatory</div>' +
+    '</div>' +
     '</div>' +
 
     '</div>' +
@@ -150,10 +199,10 @@ export function invHTML(d: any) {
   }
   var typeLabel = d.type === 'gst' ? 'TAX INVOICE' : d.type === 'quotation' ? 'QUOTATION' : 'CASH MEMO / BILL';
   var typeColor = d.type === 'gst' ? '#003399' : d.type === 'quotation' ? '#CC6600' : '#006600';
-  var totHtml = '<div style="display:flex;justify-content:space-between;padding:6px 10px;border-bottom:1px solid #eee;font-size:11px"><span style="color:#003399;font-weight:700">TOTAL</span><span>' + fmtR(d.sub) + '</span></div>';
+  var totHtml = '<div style="display:flex;justify-content:space-between;padding:6px 10px;border-bottom:1px solid #eee;font-size:13px"><span style="color:#003399;font-weight:700">TOTAL</span><span>' + fmtR(d.sub) + '</span></div>';
   if (d.applyGst) {
-    totHtml += '<div style="display:flex;justify-content:space-between;padding:6px 10px;border-bottom:1px solid #eee;font-size:11px"><span style="color:#CC0000;font-weight:700">CGST @ 9 %</span><span>' + fmtR(d.cgst) + '</span></div>';
-    totHtml += '<div style="display:flex;justify-content:space-between;padding:6px 10px;border-bottom:1px solid #eee;font-size:11px"><span style="color:#CC0000;font-weight:700">SGST @ 9 %</span><span>' + fmtR(d.sgst) + '</span></div>';
+    totHtml += '<div style="display:flex;justify-content:space-between;padding:6px 10px;border-bottom:1px solid #eee;font-size:13px"><span style="color:#CC0000;font-weight:700">CGST @ 9 %</span><span>' + fmtR(d.cgst) + '</span></div>';
+    totHtml += '<div style="display:flex;justify-content:space-between;padding:6px 10px;border-bottom:1px solid #eee;font-size:13px"><span style="color:#CC0000;font-weight:700">SGST @ 9 %</span><span>' + fmtR(d.sgst) + '</span></div>';
   }
   totHtml += '<div style="display:flex;justify-content:space-between;padding:8px 10px;font-size:13px;font-weight:700;color:#003399;background:#f0f4ff"><span>GRAND TOTAL</span><span>' + fmtR(d.grand) + '</span></div>';
 
@@ -162,10 +211,13 @@ export function invHTML(d: any) {
     stampHtml = '<div style="display:flex;gap:30px;align-items:flex-end;">' +
       '<div style="text-align:center;padding-top:4px;border-top:1px solid #003399;min-width:120px;">Receiver\'s Signature</div>' +
       '<div style="position:relative;display:inline-block;text-align:center;color:#003399;font-family:Arial,sans-serif;line-height:1.2;font-size:10px;">' +
-      '<div style="font-weight:700;font-size:11px;">For SRI VENKATA SURYA</div>' +
+      '<div style="font-weight:700;font-size:13px;">For SRI VENKATA SURYA</div>' +
       '<div style="font-weight:700;">Electrical &amp; Motor Mechanical Works</div>' +
-      '<div style="height:35px;position:relative;">' +
-        '<div style="position:absolute;top:-5px;left:50%;transform:translateX(-50%) rotate(-5deg);font-family:\'Brush Script MT\', \'Lucida Handwriting\', cursive;font-size:24px;color:#001a66;white-space:nowrap;opacity:0.85;text-shadow:0 0 1px rgba(0,26,102,0.3);">S. Venkateshwar Rao</div>' +
+      '<div style="height:40px;display:flex;align-items:center;justify-content:center;margin:4px 0;">' +
+        (d.signatureUrl 
+          ? '<img src="' + esc(d.signatureUrl) + '" style="max-height:40px;max-width:120px;object-fit:contain;" />' 
+          : '<div style="font-family:\'Brush Script MT\', \'Lucida Handwriting\', cursive;font-size:24px;color:#001a66;transform:rotate(-5deg);white-space:nowrap;opacity:0.85;text-shadow:0 0 1px rgba(0,26,102,0.3);">S. Venkateshwar Rao</div>'
+        ) +
       '</div>' +
       '<div>Authorised Signatory</div>' +
       '<div style="font-weight:700;">S. Venkateshwar Rao</div>' +
@@ -182,17 +234,18 @@ export function invHTML(d: any) {
   var itemRows = (d.rows || []).map(function (it: any, i: number) {
     var q = parseFloat(it.q) || 0, r = parseFloat(it.r) || 0, a = parseFloat(it.a) || 0;
     var rowAmt = (q > 0 && r > 0) ? q * r : a;
-    return '<tr style="vertical-align:top"><td style="text-align:center;padding:6px 8px;border-right:1px solid #003399;border-bottom:1px solid #eee">' + (i + 1) + '</td>' +
-      '<td style="padding:6px 8px;border-right:1px solid #003399;border-bottom:1px solid #eee">' + esc(it.p || '') + '</td>' +
-      '<td style="text-align:center;padding:6px 8px;border-right:1px solid #003399;border-bottom:1px solid #eee">' + esc(it.h || '') + '</td>' +
-      '<td style="text-align:center;padding:6px 8px;border-right:1px solid #003399;border-bottom:1px solid #eee">' + (it.q || '') + '</td>' +
-      '<td style="text-align:right;padding:6px 8px;border-right:1px solid #003399;border-bottom:1px solid #eee">' + (r ? fmtR(r) : '') + '</td>' +
-      '<td style="text-align:right;padding:6px 8px;border-bottom:1px solid #eee">' + fmtR(rowAmt) + '</td></tr>';
+    if (!it.p && !it.h && !it.q && !it.r && rowAmt === 0) return '';
+    return '<tr style="vertical-align:top"><td style="text-align:center;padding:8px;border-right:1px solid #003399;border-bottom:1px solid #eee">' + (i + 1) + '</td>' +
+      '<td style="padding:8px;border-right:1px solid #003399;border-bottom:1px solid #eee">' + esc(it.p || '') + '</td>' +
+      '<td style="text-align:center;padding:8px;border-right:1px solid #003399;border-bottom:1px solid #eee">' + esc(it.h || '') + '</td>' +
+      '<td style="text-align:center;padding:8px;border-right:1px solid #003399;border-bottom:1px solid #eee">' + (it.q || '') + '</td>' +
+      '<td style="text-align:right;padding:8px;border-right:1px solid #003399;border-bottom:1px solid #eee">' + (r ? fmtR(r) : '') + '</td>' +
+      '<td style="text-align:right;padding:8px;border-bottom:1px solid #eee">' + fmtR(rowAmt) + '</td></tr>';
   }).join('');
 
   return '<!DOCTYPE html><html><head><meta charset="utf-8"><style>' +
     'body{margin:0;padding:0;background:#f1f5f9;font-family:Arial,sans-serif}' +
-    '.inv{border:1px solid #003399;font-size:11px;color:#000;width:794px;height:1123px;box-sizing:border-box;margin:0 auto;display:flex;flex-direction:column;background:#fff}' +
+    '.inv{border:1px solid #003399;font-size:13px;color:#000;width:794px;height:1123px;box-sizing:border-box;margin:0 auto;display:flex;flex-direction:column;background:#fff}' +
     'table{border-collapse:collapse}' +
     '</style></head><body>' +
     '<div class="inv">' +
@@ -206,43 +259,47 @@ export function invHTML(d: any) {
     '</div>' +
     '<div style="text-align:center;padding:6px 10px 8px;flex-shrink:0">' +
     '<div style="font-size:20px;font-weight:700;color:#CC0000;line-height:1.2">SRI VENKATA SURYA ELECTRICAL &amp; MECHANICAL WORKS</div>' +
-    '<div style="font-size:11px;font-weight:700;color:#003399;margin-top:4px">SALES &amp; SERVICE : ALL KINDS OF MOTOR REWINDING WORKS ARE AVAILABLE</div>' +
+    '<div style="font-size:13px;font-weight:700;color:#003399;margin-top:4px">SALES &amp; SERVICE : ALL KINDS OF MOTOR REWINDING WORKS ARE AVAILABLE</div>' +
     '<div style="font-size:10px;margin-top:2px">Plot No. : 21, Nirmala Nagar Colony, Karmanghat, Hyderabad - 500 079. (T.G.)</div>' +
     '</div>' +
     '<div style="border-top:1px solid #003399;flex-shrink:0"></div>' +
     '<div style="display:grid;grid-template-columns:1fr 1fr;border-bottom:1px solid #003399;flex-shrink:0">' +
-    '<div style="padding:6px 10px">' +
-    '<div style="display:flex;gap:4px;font-size:11px;margin-bottom:4px"><span style="min-width:85px">Invoice No. :</span><span style="font-weight:700;color:#CC0000">' + esc(d.no) + '</span></div>' +
-    '<div style="display:flex;gap:4px;font-size:11px"><span style="min-width:85px">Invoice Date :</span><span style="font-weight:700;color:#003399">' + esc(d.date) + '</span></div>' +
+    '<div style="padding:10px 12px">' +
+    '<div style="display:flex;gap:4px;font-size:13px;margin-bottom:6px"><span style="min-width:85px">Invoice No. :</span><span style="font-weight:700;color:#CC0000">' + esc(d.no) + '</span></div>' +
+    '<div style="display:flex;gap:4px;font-size:13px"><span style="min-width:85px">Invoice Date :</span><span style="font-weight:700;color:#003399">' + esc(d.date) + '</span></div>' +
     '</div>' +
-    '<div style="padding:6px 10px;border-left:1px solid #003399">' +
-    '<div style="display:flex;gap:4px;font-size:11px;margin-bottom:4px"><span style="min-width:95px">Transport Mode :</span><span>' + esc(d.transport || '') + '</span></div>' +
-    '<div style="display:flex;gap:4px;font-size:11px;margin-bottom:4px"><span style="min-width:95px">Vehicle Number :</span><span></span></div>' +
-    '<div style="display:flex;gap:4px;font-size:11px"><span style="min-width:95px">P.O. Number :</span><span>' + esc(d.po || '') + '</span></div>' +
+    '<div style="padding:10px 12px;border-left:1px solid #003399">' +
+    '<div style="display:flex;gap:4px;font-size:13px;margin-bottom:6px"><span style="min-width:95px">Transport Mode :</span><span>' + esc(d.transport || '') + '</span></div>' +
+    '<div style="display:flex;gap:4px;font-size:13px;margin-bottom:6px"><span style="min-width:95px">Vehicle Number :</span><span></span></div>' +
+    '<div style="display:flex;gap:4px;font-size:13px"><span style="min-width:95px">P.O. Number :</span><span>' + esc(d.po || '') + '</span></div>' +
     '</div>' +
     '</div>' +
     '<div style="display:grid;grid-template-columns:1fr 1fr;border-bottom:1px solid #003399;flex-shrink:0">' +
-    '<div style="padding:6px 10px;border-right:1px solid #003399">' +
-    '<div style="font-size:10px;font-weight:700;color:#003399;text-align:center;margin-bottom:5px;padding-bottom:3px;border-bottom:1px solid #ccc">BILL TO PARTY</div>' +
-    '<div style="display:flex;gap:4px;font-size:11px;margin-bottom:3px"><span style="min-width:60px">Name :</span><span style="font-weight:700">' + esc(d.cname || '') + '</span></div>' +
-    '<div style="display:flex;gap:4px;font-size:11px;margin-bottom:3px"><span style="min-width:60px">Address :</span><span>' + esc(d.caddr || '') + '</span></div>' +
-    '<div style="display:flex;gap:4px;font-size:11px"><span style="min-width:60px">GSTIN :</span><span style="color:#6600cc">' + esc(d.cgstin || '') + '</span></div>' +
+    '<div style="border-right:1px solid #003399">' +
+    '<div style="font-size:10px;font-weight:700;color:#003399;text-align:center;padding:6px 0;border-bottom:1px solid #003399;background:#f0f4ff;">BILL TO PARTY</div>' +
+    '<div style="padding:10px 12px;">' +
+    '<div style="display:flex;gap:4px;font-size:13px;margin-bottom:6px"><span style="min-width:60px">Name :</span><span style="font-weight:700">' + esc(d.cname || '') + '</span></div>' +
+    '<div style="display:flex;gap:4px;font-size:13px;margin-bottom:6px"><span style="min-width:60px">Address :</span><span>' + esc(d.caddr || '') + '</span></div>' +
+    '<div style="display:flex;gap:4px;font-size:13px"><span style="min-width:60px">GSTIN :</span><span style="color:#6600cc">' + esc(d.cgstin || '') + '</span></div>' +
     '</div>' +
-    '<div style="padding:6px 10px">' +
-    '<div style="font-size:10px;font-weight:700;color:#003399;text-align:center;margin-bottom:5px;padding-bottom:3px;border-bottom:1px solid #ccc">SHIP TO PARTY</div>' +
-    '<div style="display:flex;gap:4px;font-size:11px;margin-bottom:3px"><span style="min-width:60px">Name :</span><span style="font-weight:700">' + esc(d.sname || '') + '</span></div>' +
-    '<div style="display:flex;gap:4px;font-size:11px;margin-bottom:3px"><span style="min-width:60px">Address :</span><span>' + esc(d.saddr || '') + '</span></div>' +
-    '<div style="display:flex;gap:4px;font-size:11px"><span style="min-width:60px">GSTIN :</span><span style="color:#6600cc">' + esc(d.sgstin || '') + '</span></div>' +
+    '</div>' +
+    '<div>' +
+    '<div style="font-size:10px;font-weight:700;color:#003399;text-align:center;padding:6px 0;border-bottom:1px solid #003399;background:#f0f4ff;">SHIP TO PARTY</div>' +
+    '<div style="padding:10px 12px;">' +
+    '<div style="display:flex;gap:4px;font-size:13px;margin-bottom:6px"><span style="min-width:60px">Name :</span><span style="font-weight:700">' + esc(d.sname || '') + '</span></div>' +
+    '<div style="display:flex;gap:4px;font-size:13px;margin-bottom:6px"><span style="min-width:60px">Address :</span><span>' + esc(d.saddr || '') + '</span></div>' +
+    '<div style="display:flex;gap:4px;font-size:13px"><span style="min-width:60px">GSTIN :</span><span style="color:#6600cc">' + esc(d.sgstin || '') + '</span></div>' +
+    '</div>' +
     '</div>' +
     '</div>' +
     '<div style="flex:1;background:#fff;display:flex;flex-direction:column;">' +
-    '<table style="width:100%;height:100%;font-size:11px"><thead><tr>' +
-    '<th style="width:35px;background:#f0f4ff;color:#003399;font-weight:700;padding:8px;border-right:1px solid #003399;border-bottom:1px solid #003399;text-align:center">Sl.</th>' +
-    '<th style="background:#f0f4ff;color:#003399;font-weight:700;padding:8px;border-right:1px solid #003399;border-bottom:1px solid #003399;text-align:left">PARTICULARS</th>' +
-    '<th style="width:75px;background:#f0f4ff;color:#003399;font-weight:700;padding:8px;border-right:1px solid #003399;border-bottom:1px solid #003399;text-align:center">HSN/SAC</th>' +
-    '<th style="width:55px;background:#f0f4ff;color:#003399;font-weight:700;padding:8px;border-right:1px solid #003399;border-bottom:1px solid #003399;text-align:center">Qty</th>' +
-    '<th style="width:85px;background:#f0f4ff;color:#003399;font-weight:700;padding:8px;border-right:1px solid #003399;border-bottom:1px solid #003399;text-align:right">Rate</th>' +
-    '<th style="width:100px;background:#f0f4ff;color:#003399;font-weight:700;padding:8px;border-bottom:1px solid #003399;text-align:right">AMOUNT</th>' +
+    '<table style="width:100%;height:100%;font-size:13px;border-collapse:collapse;"><thead><tr>' +
+    '<th style="width:35px;background:#f0f4ff;color:#003399;font-weight:700;padding:10px 8px;border-right:1px solid #003399;border-bottom:1px solid #003399;text-align:center">Sl.</th>' +
+    '<th style="background:#f0f4ff;color:#003399;font-weight:700;padding:10px 8px;border-right:1px solid #003399;border-bottom:1px solid #003399;text-align:left">PARTICULARS</th>' +
+    '<th style="width:75px;background:#f0f4ff;color:#003399;font-weight:700;padding:10px 8px;border-right:1px solid #003399;border-bottom:1px solid #003399;text-align:center">HSN/SAC</th>' +
+    '<th style="width:55px;background:#f0f4ff;color:#003399;font-weight:700;padding:10px 8px;border-right:1px solid #003399;border-bottom:1px solid #003399;text-align:center">Qty</th>' +
+    '<th style="width:85px;background:#f0f4ff;color:#003399;font-weight:700;padding:10px 8px;border-right:1px solid #003399;border-bottom:1px solid #003399;text-align:right">Rate</th>' +
+    '<th style="width:100px;background:#f0f4ff;color:#003399;font-weight:700;padding:10px 8px;border-bottom:1px solid #003399;text-align:right">AMOUNT</th>' +
     '</tr></thead><tbody>' + itemRows + 
     '<tr style="height:100%;">' +
     '<td style="border-right:1px solid #003399;"></td>' +
@@ -255,20 +312,35 @@ export function invHTML(d: any) {
     '</tbody></table>' +
     '</div>' +
     '<div style="display:flex;border-top:1px solid #003399;flex-shrink:0">' +
-    '<div style="padding:10px 12px;font-size:10px;flex:1">' +
+    '<div style="font-size:10px;flex:1">' +
+    '<div style="padding:10px 12px 0;">' +
     '<div style="color:#CC0000;font-weight:700;margin-bottom:3px">Our Bank Details :</div>' +
-    '<div style="color:#003399;font-weight:700;font-size:11px">AXIS BANK, BN Reddy Branch</div>' +
-    '<div style="margin-top:2px">A/c. No. : 917020076235758, IFSC Code : UTIB0003061</div>' +
-    '<div style="margin-top:8px;font-weight:700">Rupees :</div>' +
-    '<div style="margin-top:16px;font-size:9px;color:#555;line-height:1.4"><strong>Terms &amp; Conditions</strong><br>1. Goods once cleared cannot be returned.<br>2. Not responsible for breakage after despatch.<br>3. Subject to R.R. Dist. Jurisdiction</div>' +
+    '<div style="color:#CC0000;font-weight:700;font-size:13px">AXIS BANK, BN Reddy Branch</div>' +
+    '<div style="color:#CC0000;font-weight:700;margin-top:2px">A/c. No. : 917020076235758, IFSC Code : UTIB0003061</div>' +
+    '</div>' +
+    '<div style="border-top:1px solid #003399;border-bottom:1px solid #003399;margin:8px 0;padding:6px 12px;font-weight:700;">Rupees : <span style="font-weight:400;color:#000;">' + esc(numberToWords(d.grand)) + '</span></div>' +
+    '<div style="font-size:9.5px;color:#333;line-height:1.6;padding:0 12px 10px;">' +
+    '<strong style="font-size:10.5px;color:#000;">Terms &amp; Conditions</strong><br>' +
+    '1. Goods once cleared from our godown cannot be returned, exchanged, or re-entered into the godown.<br>' +
+    '2. We are not responsible for any breakage, shortage, or any type of loss after dispatch.<br>' +
+    '3. Subject to R.R. Dist. Jurisdiction.' +
+    '</div>' +
     '</div>' +
     '<div style="width:46%;border-left:1px solid #003399">' + totHtml + '</div>' +
     '</div>' +
     '<div style="display:flex;justify-content:space-between;align-items:flex-end;padding:10px 12px;border-top:1px solid #003399;font-size:10px;flex-shrink:0">' +
-    '<div style="display:flex;gap:12px;align-items:center">' +
-    '<span style="color:#CC0000;font-weight:700;font-size:13px">AQUATEX</span>' +
-    '<span style="color:#003399;font-weight:700;font-size:13px">TEXMO</span>' +
-    '<span style="color:#006600;font-weight:700;font-size:13px">AQUA GROUP</span>' +
+    '<div style="display:flex;gap:18px;align-items:center">' +
+    '<div style="display:flex;flex-direction:column;align-items:center;">' +
+    '<div style="width:0;height:0;border-left:14px solid transparent;border-right:14px solid transparent;border-bottom:24px solid #E63900;margin-bottom:4px;"></div>' +
+    '<span style="color:#E63900;font-weight:900;font-size:14px;letter-spacing:0.5px;line-height:1;display:inline-block;">AQUATEX</span>' +
+    '</div>' +
+    '<div style="display:flex;flex-direction:column;align-items:center;">' +
+    '<div style="border:2px solid #E63900;color:#E63900;font-weight:900;font-size:14px;padding:6px 12px 4px;border-radius:8px;letter-spacing:1px;margin-bottom:2px;display:inline-block;line-height:1;">TEXMO</div>' +
+    '</div>' +
+    '<div style="display:flex;flex-direction:column;align-items:center;">' +
+    '<div style="background:#E63900;color:#fff;padding:6px 14px 4px;border-radius:8px;font-weight:900;font-size:14px;letter-spacing:0.5px;margin-bottom:4px;display:inline-block;line-height:1;">AQUA GROUP</div>' +
+    '<span style="color:#E63900;font-size:12px;font-style:italic;line-height:1;">Pumps you can rely on</span>' +
+    '</div>' +
     '</div>' +
     stampHtml +
     '</div>' +
