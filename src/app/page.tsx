@@ -1025,11 +1025,23 @@ export default function App() {
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.lang = langCode;
     const voices = window.speechSynthesis.getVoices();
-    const voice = voices.find((v) => v.lang.startsWith(langCode));
+    let voice = null;
+    if (langCode.startsWith("te")) {
+      voice = voices.find(v => v.lang.startsWith("te") && v.name.toLowerCase().includes("gita")) ||
+              voices.find(v => v.lang.startsWith("te"));
+    } else {
+      voice = voices.find(v => v.lang.startsWith("en-IN") && (v.name.toLowerCase().includes("veena") || v.name.toLowerCase().includes("rishi") || v.name.toLowerCase().includes("isha") || v.name.toLowerCase().includes("sangeeta"))) ||
+              voices.find(v => v.lang.startsWith("en-IN")) ||
+              voices.find(v => v.lang.startsWith("en-US") && v.name.toLowerCase().includes("samantha")) ||
+              voices.find(v => v.lang.startsWith("en"));
+    }
+
     if (voice) {
       utterance.voice = voice;
     }
-    utterance.rate = 0.9;
+    utterance.rate = 0.95;
+    utterance.pitch = 1.05;
+    utterance.volume = 1.0;
 
     utterance.onend = () => {
       if (wasListening && showAiDrawer) {
