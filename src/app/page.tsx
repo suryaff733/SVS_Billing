@@ -558,6 +558,14 @@ function fallbackParseInput(transcript: string, state: string, language: string)
       }
       break;
     }
+    case "CONFIRMING_LOW_CONFIDENCE": {
+      if (t.includes("yes") || t.includes("అవును") || t.includes("చేయి") || t.includes("ok") || t === "yes") {
+        value = true;
+      } else {
+        value = false;
+      }
+      break;
+    }
     default:
       value = transcript;
       break;
@@ -952,6 +960,7 @@ export default function App() {
     error: speechError,
     isSupported,
     language,
+    confidence,
     startListening,
     stopListening,
     resetTranscript,
@@ -1006,6 +1015,10 @@ export default function App() {
     CONFIRMING_DESTRUCTIVE: {
       en: "Are you sure you'd like to perform this action? This will clear or cancel the invoice.",
       te: "మీరు ఖచ్చితంగా ఈ ఇన్వాయిస్‌ను రీసెట్ లేదా క్యాన్సిల్ చేయాలనుకుంటున్నారా?"
+    },
+    CONFIRMING_LOW_CONFIDENCE: {
+      en: "Is this action correct?",
+      te: "నేను విన్నది సరైనదేనా?"
     },
     COMPLETE: {
       en: "Your invoice is ready! The PDF has been downloaded successfully.",
@@ -1103,13 +1116,70 @@ export default function App() {
     }
   };
 
-  const handleConversationalInput = async (userInputText: string) => {
+  const handleConversationalInput = async (userInputText: string, confidenceScore?: number) => {
     if (!userInputText.trim()) return;
+
+    // 1. Transcript Filler Cleanup
+    let cleanedInput = userInputText.toLowerCase().trim();
+    const fillers = [
+      /\buh\b/g, /\bumm\b/g, /\bum\b/g, /\beh\b/g, /\bah\b/g, 
+      /\bactually\b/g, /\bbasically\b/g, /\byou know\b/g, 
+      /\blisten\b/g, /\bso yeah\b/g, /\bwell\b/g, /\bhaha\b/g
+    ];
+    fillers.forEach(regex => {
+      cleanedInput = cleanedInput.replace(regex, "");
+    });
+    cleanedInput = cleanedInput.replace(/\s+/g, " ").trim();
+    let displayInput = cleanedInput ? cleanedInput.charAt(0).toUpperCase() + cleanedInput.slice(1) : userInputText;
+
+    // 2. Low Confidence Failsafe Intercept
+    let nextContext = { ...fsmContext };
+    if (confidenceScore !== undefined && confidenceScore < 80) {
+      const parsedTemp = fallbackParseInput(cleanedInput, fsmState, language);
+      if (parsedTemp && parsedTemp.intent === "COMMAND" && parsedTemp.command) {
+        nextContext.pendingCommand = parsedTemp.command;
+        setFsmState("CONFIRMING_LOW_CONFIDENCE");
+        setFsmContext(nextContext);
+        
+        let cmdDesc = "";
+        let cmdDescTe = "";
+        const { type, data } = parsedTemp.command;
+        if (type === "ADD_ITEM") {
+          cmdDesc = `add ${data.q || "1"} ${data.p || "item"} at ₹${data.r || "0"}`;
+          cmdDescTe = `${data.p || "ఐటమ్"} ని ₹${data.r || "0"} ధరతో ${data.q || "1"} చేర్చడం`;
+        } else if (type === "REMOVE_ITEM") {
+          cmdDesc = `remove ${data.p || "item"}`;
+          cmdDescTe = `${data.p || "ఐటమ్"} ని తీసివేయడం`;
+        } else {
+          cmdDesc = `${type.replace("_", " ").toLowerCase()}`;
+          cmdDescTe = "ఈ మార్పును చేయడం";
+        }
+        
+        const confirmTextEn = `I think I heard: "${cmdDesc}". Is that correct?`;
+        const confirmTextTe = `నేను "${cmdDescTe}" అని విన్నాను. ఇది సరైనదేనా?`;
+        
+        const userMsg = {
+          sender: "user" as const,
+          text: displayInput,
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        };
+        const confirmBubble = {
+          sender: "ai" as const,
+          text: confirmTextEn,
+          teText: confirmTextTe,
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        };
+        setChatMessages(prev => [...prev, userMsg, confirmBubble]);
+        speakText(language === "te-IN" ? confirmTextTe : confirmTextEn, language);
+        resetTranscript();
+        return;
+      }
+    }
 
     // Add User message bubble
     const userMsg = {
       sender: "user" as const,
-      text: userInputText,
+      text: displayInput,
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
     };
     setChatMessages(prev => [...prev, userMsg]);
@@ -1563,6 +1633,33 @@ export default function App() {
       };
       setChatMessages(prev => [...prev, cancelBubble]);
       speakText(language === "te-IN" ? `రద్దు చేసాము. ${prompts.te}` : `Action cancelled. ${prompts.en}`, language);
+      return;
+    }
+
+    if (fsmState === "CONFIRMING_LOW_CONFIDENCE") {
+      const isConfirmed = value === true;
+      const pending = fsmContext.pendingCommand;
+      nextContext.pendingCommand = null;
+
+      if (isConfirmed && pending) {
+        setFsmState("COLLECTING_ITEM_NAME");
+        setFsmContext(nextContext);
+        await handleFsmTransition({ intent: "COMMAND", command: pending }, rawText);
+        return;
+      }
+
+      setFsmState("COLLECTING_ITEM_NAME");
+      setFsmContext(nextContext);
+      
+      const prompts = FSM_PROMPTS.COLLECTING_ITEM_NAME;
+      const cancelBubble = {
+        sender: "ai" as const,
+        text: `Got it, I've cancelled the action. Let's continue with the invoice. ${prompts.en}`,
+        teText: `సరేనండి, రద్దు చేసాము. ${prompts.te}`,
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      };
+      setChatMessages(prev => [...prev, cancelBubble]);
+      speakText(language === "te-IN" ? `సరేనండి, రద్దు చేసాము. ${prompts.te}` : `Got it, I've cancelled the action. ${prompts.en}`, language);
       return;
     }
 
@@ -2239,15 +2336,27 @@ export default function App() {
   };
 
   const prevIsListening = useRef(false);
+  const [temporalBuffer, setTemporalBuffer] = useState<string>("");
+  const temporalTimerRef = useRef<any>(null);
 
   useEffect(() => {
     if (prevIsListening.current && !isListening && transcript.trim()) {
       if (showAiDrawer) {
-        handleConversationalInput(transcript);
+        if (temporalTimerRef.current) {
+          clearTimeout(temporalTimerRef.current);
+        }
+        
+        const combinedText = (temporalBuffer + " " + transcript).trim();
+        setTemporalBuffer(combinedText);
+        
+        temporalTimerRef.current = setTimeout(() => {
+          handleConversationalInput(combinedText, confidence);
+          setTemporalBuffer("");
+        }, 600);
       }
     }
     prevIsListening.current = isListening;
-  }, [isListening, transcript, showAiDrawer]);
+  }, [isListening, transcript, showAiDrawer, confidence]);
 
   const handleCloseDrawer = () => {
     setShowAiDrawer(false);

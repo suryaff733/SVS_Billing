@@ -8,6 +8,7 @@ export function useSpeechRecognition() {
   const [error, setError] = useState<string | null>(null);
   const [isSupported, setIsSupported] = useState(false);
   const [language, setLanguageState] = useState("te-IN"); // Telugu-First primary setting
+  const [confidence, setConfidence] = useState<number>(100);
   const recognitionRef = useRef<any>(null);
 
   useEffect(() => {
@@ -34,13 +35,19 @@ export function useSpeechRecognition() {
             return;
           }
           let currentTranscript = "";
+          let aggregateConfidence = 0;
+          let resultCount = 0;
           for (let i = event.resultIndex; i < event.results.length; i++) {
             if (event.results[i].isFinal) {
               currentTranscript += event.results[i][0].transcript + " ";
+              aggregateConfidence += event.results[i][0].confidence || 0.85;
+              resultCount++;
             }
           }
           if (currentTranscript.trim()) {
             setTranscript((prev) => prev + currentTranscript);
+            const finalConfidence = resultCount > 0 ? Math.round((aggregateConfidence / resultCount) * 100) : 100;
+            setConfidence(finalConfidence);
           }
         };
 
@@ -86,6 +93,7 @@ export function useSpeechRecognition() {
 
   const resetTranscript = () => {
     setTranscript("");
+    setConfidence(100);
     setError(null);
   };
 
@@ -103,6 +111,7 @@ export function useSpeechRecognition() {
     error,
     isSupported,
     language,
+    confidence,
     startListening,
     stopListening,
     resetTranscript,

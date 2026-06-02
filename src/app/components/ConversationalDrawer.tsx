@@ -109,6 +109,11 @@ export default function ConversationalDrawer({
           { label: "Yes, reset/cancel (అవును)", value: "Yes" },
           { label: "No (వద్దు)", value: "No" },
         ];
+      case "CONFIRMING_LOW_CONFIDENCE":
+        return [
+          { label: "Yes, Apply (అవును)", value: "Yes" },
+          { label: "No, cancel (వద్దు)", value: "No" },
+        ];
       default:
         return [];
     }
