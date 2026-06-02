@@ -74,6 +74,14 @@ export function invHTML_simple(d: any) {
     '<td colspan="3" style="border-top: 1px solid #003399; border-right: 1px solid #003399; padding: 8px 10px; text-align: left;">TOTAL</td>' +
     '<td style="border-top: 1px solid #003399; padding: 8px 10px; text-align: right; color: #000; font-size: 16px;">' + fmtR(d.sub) + '/-</td></tr>';
 
+  if (d.discount > 0) {
+    totals += '<tr style="font-weight: 700; color: #666; font-size: 14px;">' +
+      '<td style="border-right: 1px solid #003399;"></td>' +
+      '<td style="border-right: 1px solid #003399;"></td>' +
+      '<td colspan="3" style="border-top: 1px solid #003399; border-right: 1px solid #003399; padding: 8px 10px; text-align: left;">DISCOUNT (' + d.discount + '%)</td>' +
+      '<td style="border-top: 1px solid #003399; padding: 8px 10px; text-align: right; color: #000; font-size: 16px;">- ' + fmtR(d.discountAmt) + '/-</td></tr>';
+  }
+
   if (d.applyGst) {
     totals += '<tr style="font-weight: 700; color: #CC0000; font-size: 14px;">' +
       '<td style="border-right: 1px solid #003399;"></td>' +
@@ -200,6 +208,9 @@ export function invHTML(d: any) {
   var typeLabel = d.type === 'gst' ? 'TAX INVOICE' : d.type === 'quotation' ? 'QUOTATION' : 'CASH MEMO / BILL';
   var typeColor = d.type === 'gst' ? '#003399' : d.type === 'quotation' ? '#CC6600' : '#006600';
   var totHtml = '<div style="display:flex;justify-content:space-between;padding:6px 10px;border-bottom:1px solid #eee;font-size:13px"><span style="color:#003399;font-weight:700">TOTAL</span><span>' + fmtR(d.sub) + '</span></div>';
+  if (d.discount > 0) {
+    totHtml += '<div style="display:flex;justify-content:space-between;padding:6px 10px;border-bottom:1px solid #eee;font-size:13px"><span style="color:#666;font-weight:700">DISCOUNT (' + d.discount + '%)</span><span>- ' + fmtR(d.discountAmt) + '</span></div>';
+  }
   if (d.applyGst) {
     totHtml += '<div style="display:flex;justify-content:space-between;padding:6px 10px;border-bottom:1px solid #eee;font-size:13px"><span style="color:#CC0000;font-weight:700">CGST @ 9 %</span><span>' + fmtR(d.cgst) + '</span></div>';
     totHtml += '<div style="display:flex;justify-content:space-between;padding:6px 10px;border-bottom:1px solid #eee;font-size:13px"><span style="color:#CC0000;font-weight:700">SGST @ 9 %</span><span>' + fmtR(d.sgst) + '</span></div>';

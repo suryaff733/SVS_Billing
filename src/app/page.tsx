@@ -7,18 +7,29 @@ import { invHTML } from "../lib/invoiceHTML";
 import "./globals.css"; // Ensure global CSS has the original styles
 import { useSpeechRecognition } from "./hooks/useSpeechRecognition";
 import ConversationalDrawer from "./components/ConversationalDrawer";
+import catalog from "./catalog.json";
 
 type Row = { p: string; h: string; q: string; r: string; a: number };
 type BillType = 'gst' | 'quotation' | 'cash';
 
 function fallbackParseInput(transcript: string, state: string, language: string): any {
   const t = transcript.toLowerCase().trim();
+  if (!t) {
+    return {
+      intent: "REPEAT",
+      value: null,
+      command: null,
+      corrections: {},
+      teFeedback: language === "te-IN" ? "నేను వినలేకపోయాను, మళ్లీ చెప్పండి." : "I couldn't hear that. Let's try that one more time."
+    };
+  }
   let value: any = null;
   let intent: "NEXT" | "PREVIOUS" | "REPEAT" | "CORRECT" | "COMMAND" = "NEXT";
   let command: any = null;
   let corrections: any = {};
   let teFeedback = "";
 
+  // 1. Core navigation & basic commands
   if (t.includes("వెనక్కి") || t.includes("previous") || t.includes("go back") || t.includes("back")) {
     return { intent: "PREVIOUS", value: null, command: null, corrections: {}, teFeedback: "వెనక్కి వెళ్తున్నాము" };
   }
@@ -34,35 +45,312 @@ function fallbackParseInput(transcript: string, state: string, language: string)
   if (t.includes("apply gst") || t.includes("gst add chey") || t.includes("జీఎస్టీ వర్తింపజేయి")) {
     return { intent: "COMMAND", value: null, command: { type: "APPLY_GST", data: {} }, corrections: {}, teFeedback: "GST వర్తింపజేసాము" };
   }
-  if (t.includes("remove gst") || t.includes("gst teesei") || t.includes("జీఎస్టీ తీసివేయి")) {
+  if (t.includes("remove gst") || t.includes("gst teesei") || t.includes("జీఎస్టీ తీసిвеయి")) {
     return { intent: "COMMAND", value: null, command: { type: "REMOVE_GST", data: {} }, corrections: {}, teFeedback: "GST తీసివేసాము" };
   }
-  if (t.includes("download invoice") || t.includes("generate pdf") || t.includes("పిడిఎఫ్ డౌన్‌లోడ్ చేయి")) {
+  if (t.includes("download invoice") || t.includes("generate pdf") || t.includes("పిడిఎఫ్ డౌన్‌లోడ్ చేయి") || t === "generate pdf" || t === "download pdf") {
     return { intent: "COMMAND", value: null, command: { type: "GENERATE_PDF", data: {} }, corrections: {}, teFeedback: "పిడిఎఫ్ డౌన్‌లోడ్ అవుతోంది" };
   }
-  if (t.includes("start new") || t.includes("కొత్త బిల్లు")) {
+  if (t.includes("start over") || t.includes("కొత్త బిల్లు") || t.includes("start new")) {
     return { intent: "COMMAND", value: null, command: { type: "START_NEW", data: {} }, corrections: {}, teFeedback: "కొత్త బిల్లు ప్రారంభించాము" };
   }
   if (t.includes("cancel invoice") || t.includes("క్యాన్సిల్ చేయి")) {
     return { intent: "COMMAND", value: null, command: { type: "CANCEL", data: {} }, corrections: {}, teFeedback: "బిల్లు క్యాన్సిల్ చేసాము" };
   }
-
-  // Matches "add [qty] [particulars] at [rate]" or "[qty] [particulars] at [rate]"
-  const addMatch = t.match(/(?:add\s+)?(\d+)\s+([a-zA-Z0-9\s]+?)\s+(?:at|rate|ధర)\s+(\d+)/i);
-  if (addMatch) {
-    const qty = addMatch[1];
-    const item = addMatch[2].trim();
-    const rate = addMatch[3];
+  if (t.includes("save draft") || t.includes("డ్రాఫ్ట్ సేవ్ చేయి")) {
+    return { intent: "COMMAND", value: null, command: { type: "SAVE_DRAFT", data: {} }, corrections: {}, teFeedback: "డ్రాఫ్ట్ సేవ్ చేసాము" };
+  }
+  if (t.includes("remove last item") || t.includes("చివరి ఐటమ్ తీసేయి") || t.includes("delete last item")) {
+    return { intent: "COMMAND", value: null, command: { type: "REMOVE_LAST_ITEM", data: {} }, corrections: {}, teFeedback: "చివరి ఐటమ్ తీసివేసాము" };
+  }  // --- New Dynamic Global Metadata & Grid Actions ---
+  // Change customer name
+  const changeCnameMatch = t.match(/change\s+(?:customer\s+)?name\s+(?:to\s+)?(.+)/i) || t.match(/కస్టమర్\s+పేరు\s+(.+)\s+గా\s+మార్చు/i) || t.match(/కస్టమర్\s+పేరు\s+(.+)/i);
+  if (changeCnameMatch && (t.startsWith("change") || t.includes("కస్టమర్ పేరు"))) {
+    const name = changeCnameMatch[1].trim();
     return {
       intent: "COMMAND",
       value: null,
-      command: {
-        type: "ADD_ITEM",
-        data: { p: item, q: qty, r: rate, u: "Nos" }
-      },
+      command: { type: "CHANGE_CUSTOMER_NAME", data: { name } },
       corrections: {},
-      teFeedback: `${qty} ${item} యాడ్ చేసాను`
+      teFeedback: `కస్టమర్ పేరును ${name} కి మార్చాము`
     };
+  }
+
+  // Change customer address
+  const changeCaddrMatch = t.match(/change\s+(?:customer\s+)?address\s+(?:to\s+)?(.+)/i) || t.match(/కస్టమర్\s+అడ్రస్\s+(.+)\s+గా\s+మార్చు/i) || t.match(/అడ్రస్\s+(.+)/i);
+  if (changeCaddrMatch && (t.startsWith("change") || t.includes("అడ్రస్"))) {
+    const addr = changeCaddrMatch[1].trim();
+    return {
+      intent: "COMMAND",
+      value: null,
+      command: { type: "CHANGE_CUSTOMER_ADDR", data: { addr } },
+      corrections: {},
+      teFeedback: `అడ్రస్‌ను ${addr} కి మార్చాము`
+    };
+  }
+
+  // Change PO number
+  const changePoMatch = t.match(/change\s+(?:po|purchase\s+order)\s*(?:number)?\s+(?:to\s+)?(.+)/i) || t.match(/పో\s+నెంబర్\s+(.+)/i);
+  if (changePoMatch && (t.startsWith("change") || t.includes("పో నెంబర్"))) {
+    const poVal = changePoMatch[1].trim();
+    return {
+      intent: "COMMAND",
+      value: null,
+      command: { type: "CHANGE_PO", data: { po: poVal } },
+      corrections: {},
+      teFeedback: `PO నెంబర్‌ను ${poVal} కి మార్చాము`
+    };
+  }
+
+  // Change transport
+  const changeTransportMatch = t.match(/change\s+transport\s+(?:to\s+)?(.+)/i) || t.match(/ట్రాన్స్పోర్ట్\s+(.+)/i);
+  if (changeTransportMatch && (t.startsWith("change") || t.includes("ట్రాన్స్పోర్ట్"))) {
+    const transp = changeTransportMatch[1].trim();
+    return {
+      intent: "COMMAND",
+      value: null,
+      command: { type: "CHANGE_TRANSPORT", data: { transport: transp } },
+      corrections: {},
+      teFeedback: `ట్రాన్స్‌పోర్ట్‌ను ${transp} కి మార్చాము`
+    };
+  }
+
+  // Change document type
+  const changeDocTypeMatch = t.match(/change\s+(?:invoice|billing|document|bill)\s+type\s+(?:to\s+)?(.+)/i) || t.match(/బిల్లు\s+రకం\s+(.+)/i);
+  if (changeDocTypeMatch && (t.startsWith("change") || t.includes("బిల్లు రకం"))) {
+    const docT = changeDocTypeMatch[1].toLowerCase().trim();
+    let finalDocT: 'gst' | 'quotation' | 'cash' = 'gst';
+    if (docT.includes("quotation") || docT.includes("కొటేషన్") || docT.includes("estimate")) {
+      finalDocT = 'quotation';
+    } else if (docT.includes("cash") || docT.includes("క్యాష్") || docT.includes("మెమో")) {
+      finalDocT = 'cash';
+    }
+    return {
+      intent: "COMMAND",
+      value: null,
+      command: { type: "CHANGE_DOC_TYPE", data: { btype: finalDocT } },
+      corrections: {},
+      teFeedback: `బిల్లు రకాన్ని ${finalDocT} కి మార్చాము`
+    };
+  }
+
+  // Change Date
+  const changeDateMatch = t.match(/change\s+date\s+(?:to\s+)?(.+)/i) || t.match(/తేదీ\s+(.+)/i);
+  if (changeDateMatch && (t.startsWith("change") || t.includes("తేదీ"))) {
+    const dt = changeDateMatch[1].trim();
+    return {
+      intent: "COMMAND",
+      value: null,
+      command: { type: "CHANGE_DATE", data: { date: dt } },
+      corrections: {},
+      teFeedback: `తేదీని ${dt} కి మార్చాము`
+    };
+  }
+
+  // Row Sort by Amount
+  if (t.match(/sort\s+(?:items|rows)?\s*(?:by\s+)?amount/i) || t.includes("ధరల ప్రకారం") || t.includes("ధర ప్రకారం అమర్చు")) {
+    return {
+      intent: "COMMAND",
+      value: null,
+      command: { type: "SORT_BY_AMOUNT", data: {} },
+      corrections: {},
+      teFeedback: "మొత్తం ధరల ప్రకారం ఐటమ్స్ అమర్చాము"
+    };
+  }
+
+  // Row Sort by Name
+  if (t.match(/sort\s+(?:items|rows)?\s*(?:by\s+)?name/i) || t.includes("పేర్ల ప్రకారం") || t.includes("పేరు ప్రకారం అమర్చు")) {
+    return {
+      intent: "COMMAND",
+      value: null,
+      command: { type: "SORT_BY_NAME", data: {} },
+      corrections: {},
+      teFeedback: "ఐటమ్స్ పేర్ల ప్రకారం అమర్చాము"
+    };
+  }
+
+  // Move Row
+  const moveRowMatch = t.match(/move\s+(?:item|row)\s+(\d+)\s+to\s+(?:item|row)\s+(\d+)/i) || t.match(/వరుస\s+(\d+)\s+నుండి\s+(\d+)\s+కి\s+మార్చు/i);
+  if (moveRowMatch) {
+    const fromIndex = parseInt(moveRowMatch[1]);
+    const toIndex = parseInt(moveRowMatch[2]);
+    return {
+      intent: "COMMAND",
+      value: null,
+      command: { type: "MOVE_ROW", data: { from: fromIndex, to: toIndex } },
+      corrections: {},
+      teFeedback: `${fromIndex} వరుసను ${toIndex} వరుసకి మార్చాము`
+    };
+  }
+
+  // Remove specific row by index
+  const textIndices: Record<string, number> = {
+    "first": 1, "second": 2, "third": 3, "fourth": 4, "fifth": 5, "sixth": 6, "seventh": 7, "eighth": 8, "ninth": 9, "tenth": 10
+  };
+  const teluguTextIndices: Record<string, number> = {
+    "మొదటి": 1, "రెండవ": 2, "మూడవ": 3, "నాలుగవ": 4, "ఐదవ": 5
+  };
+  let parsedRemoveIdx = 0;
+  
+  const removeIndexMatch = t.match(/remove\s+(?:item|row)\s+(\d+)/i) || t.match(/delete\s+(?:item|row)\s+(\d+)/i);
+  if (removeIndexMatch) {
+    parsedRemoveIdx = parseInt(removeIndexMatch[1]);
+  } else if (t.includes("remove") || t.includes("delete") || t.includes("తీసేయి")) {
+    Object.keys(textIndices).forEach(key => {
+      if (t.includes(key)) parsedRemoveIdx = textIndices[key];
+    });
+    Object.keys(teluguTextIndices).forEach(key => {
+      if (t.includes(key)) parsedRemoveIdx = teluguTextIndices[key];
+    });
+  }
+
+  if (parsedRemoveIdx > 0) {
+    return {
+      intent: "COMMAND",
+      value: null,
+      command: { type: "REMOVE_ROW_BY_INDEX", data: { index: parsedRemoveIdx } },
+      corrections: {},
+      teFeedback: `${parsedRemoveIdx} ఐటమ్ తీసివేసాము`
+    };
+  }
+
+  // 2. Discount Commands
+  const discountMatch = t.match(/(?:apply\s+)?(\d+)\s*(?:percent|%|శాతం)?\s*discount/i) || t.match(/discount\s*(?:of\s*)?(\d+)/i);
+  if (discountMatch) {
+    const percent = parseInt(discountMatch[1]) || 0;
+    return {
+      intent: "COMMAND",
+      value: null,
+      command: { type: "APPLY_DISCOUNT", data: { percent } },
+      corrections: {},
+      teFeedback: `${percent}% డిస్కౌంట్ వర్తింపజేసాను`
+    };
+  }
+
+  // 3. Command Action Parsers (Add, Remove, Edit Quantity/Rate)
+  const units = [
+    "feet", "foot", "meter", "meters", "inch", "inches", "yard", "yards",
+    "kg", "kilogram", "kilograms", "gram", "grams", "liter", "liters", "litre", "litres",
+    "piece", "pieces", "unit", "units", "bundle", "bundles", "roll", "rolls",
+    "box", "boxes", "pack", "packs", "nos", "no", "number", "numbers"
+  ];
+
+  const numberMap: Record<string, string> = {
+    "zero": "0", "one": "1", "two": "2", "three": "3", "four": "4", "five": "5",
+    "six": "6", "seven": "7", "eight": "8", "nine": "9", "ten": "10",
+    "twenty": "20", "thirty": "30", "forty": "40", "fifty": "50",
+    "sixty": "60", "seventy": "70", "eighty": "80", "ninety": "90", "hundred": "100"
+  };
+
+  const cleanPhoneticNumbers = (str: string) => {
+    let words = str.toLowerCase().split(/\s+/);
+    let mapped = words.map(w => numberMap[w] !== undefined ? numberMap[w] : w);
+    return mapped.join(" ");
+  };
+
+  const parseSingleProductSegment = (segText: string) => {
+    let cleanText = segText.toLowerCase().trim();
+    // remove "add " prefix
+    if (cleanText.startsWith("add ")) {
+      cleanText = cleanText.substring(4).trim();
+    }
+
+    cleanText = cleanPhoneticNumbers(cleanText);
+
+    let rate: number | null = null;
+    let qty: number | null = null;
+    let unit = "Nos";
+    let pName = "";
+
+    // Parse rate if separator present
+    const rateSeparators = [" at ", " rate ", " price ", " ధర "];
+    let matchedSeparator = "";
+    for (const sep of rateSeparators) {
+      if (cleanText.includes(sep)) {
+        matchedSeparator = sep;
+        break;
+      }
+    }
+
+    let leftPart = cleanText;
+    if (matchedSeparator) {
+      const parts = cleanText.split(matchedSeparator);
+      leftPart = parts[0].trim();
+      const rightPart = parts[1].trim();
+      const rateNum = rightPart.match(/\d+(?:\.\d+)?/);
+      if (rateNum) {
+        rate = parseFloat(rateNum[0]);
+      }
+    }
+
+    // Parse Qty, Unit, Name from leftPart
+    const qtyMatch = leftPart.match(/^\s*(\d+(?:\.\d+)?)\s*(.*)/);
+    if (qtyMatch) {
+      qty = parseFloat(qtyMatch[1]);
+      const rest = qtyMatch[2].trim();
+      const words = rest.split(/\s+/);
+      if (words.length > 0 && units.includes(words[0])) {
+        unit = words[0];
+        pName = words.slice(1).join(" ");
+      } else {
+        unit = "Nos";
+        pName = rest;
+      }
+    } else {
+      qty = null; // Missing quantity
+      unit = "Nos";
+      pName = leftPart;
+    }
+
+    // capitalize name properly
+    pName = pName.replace(/\b\w/g, c => c.toUpperCase()).trim();
+
+    return {
+      p: pName,
+      q: qty,
+      u: unit,
+      r: rate
+    };
+  };
+
+  // Check if adding multiple products (e.g. "10 motors at 5000 and 5 starters at 2500")
+  if (t.startsWith("add ") || t.match(/\d+\s+(?:feet|foot|meter|meters|inch|kg|gram|liter|piece|pieces|unit|units|bundle|bundles|roll|rolls|box|boxes|pack|packs|nos|motors|pumps|starters|pvc|cable|wire)/)) {
+    const splitTokens = [" and ", " & ", " మరియు "];
+    let splitUsed = "";
+    for (const token of splitTokens) {
+      if (t.includes(token)) {
+        splitUsed = token;
+        break;
+      }
+    }
+
+    if (splitUsed) {
+      const segments = transcript.split(new RegExp(splitUsed, "i"));
+      const parsedItems = segments.map(seg => parseSingleProductSegment(seg));
+      
+      return {
+        intent: "COMMAND",
+        value: null,
+        command: {
+          type: "ADD_MULTI_ITEMS",
+          data: { items: parsedItems }
+        },
+        corrections: {},
+        teFeedback: `${parsedItems.length} రకాల ఐటమ్స్ యాడ్ చేసాను`
+      };
+    } else {
+      const parsed = parseSingleProductSegment(transcript);
+      return {
+        intent: "COMMAND",
+        value: null,
+        command: {
+          type: "ADD_ITEM",
+          data: parsed
+        },
+        corrections: {},
+        teFeedback: `${parsed.p} యాడ్ చేసాను`
+      };
+    }
   }
 
   // Matches "remove [particulars]" or "delete [particulars]"
@@ -115,6 +403,7 @@ function fallbackParseInput(transcript: string, state: string, language: string)
     };
   }
 
+  // 4. Default state collectors
   switch (state) {
     case "COLLECTING_DOC_TYPE": {
       if (t.includes("gst") || t.includes("జీఎస్టీ") || t.includes("టాక్స్")) {
@@ -138,7 +427,7 @@ function fallbackParseInput(transcript: string, state: string, language: string)
       break;
     }
     case "COLLECTING_CUSTOMER_ADDR": {
-      if (t.includes("skip") || t.includes("దాటవేయి") || t.includes("వద్దు") || t === "వద్దు") {
+      if (t.includes("skip") || t.includes("దాటвеయి") || t.includes("వద్దు") || t === "వద్దు") {
         value = "skip";
         teFeedback = "అడ్రస్ దాటవేసాము";
       } else {
@@ -230,6 +519,42 @@ function fallbackParseInput(transcript: string, state: string, language: string)
       } else {
         value = "cancel";
         teFeedback = "బిల్లు క్యాన్సిల్ చేసాము";
+      }
+      break;
+    }
+    case "CLARIFYING_DUPLICATE": {
+      if (t.includes("merge") || t.includes("కలిపి") || t.includes("yes") || t.includes("అవును") || t === "1" || t.includes("ఒకటి")) {
+        value = "merge";
+      } else {
+        value = "separate";
+      }
+      break;
+    }
+    case "CLARIFYING_RATE_AMBIGUITY": {
+      const cleanT = cleanPhoneticNumbers(t);
+      const valMatch = cleanT.match(/\d+/);
+      if (valMatch) {
+        value = valMatch[0];
+      } else {
+        value = "5000"; // fallback
+      }
+      break;
+    }
+    case "CLARIFYING_PRODUCT_SUGGESTION": {
+      const cleanT = cleanPhoneticNumbers(t);
+      const valMatch = cleanT.match(/\d+/);
+      if (valMatch) {
+        value = valMatch[0]; // returns "1" or "2"
+      } else {
+        value = transcript.trim();
+      }
+      break;
+    }
+    case "CONFIRMING_DESTRUCTIVE": {
+      if (t.includes("yes") || t.includes("అవును") || t.includes("చేయి") || t.includes("ok") || t === "yes") {
+        value = true;
+      } else {
+        value = false;
       }
       break;
     }
@@ -386,8 +711,10 @@ function autocorrectElectricalTerminology(text: string): string {
     "payint": "Point",
     "cabel": "Cable",
     "kabel": "Cable",
+    "cabble": "Cable",
     "wair": "Wire",
     "vayr": "Wire",
+    "wirre": "Wire",
     "skwer": "Square",
     "skwear": "Square",
     "soorya": "Surya",
@@ -412,6 +739,7 @@ function autocorrectElectricalTerminology(text: string): string {
     "submergible": "Submersible",
     "pamp": "Pump",
     "pampu": "Pump",
+    "pumb": "Pump",
     "stater": "Starter",
     "startar": "Starter",
     "statr": "Starter",
@@ -565,6 +893,7 @@ export default function App() {
   ]);
   
   const [applyGst, setApplyGst] = useState(true);
+  const [discount, setDiscount] = useState(0);
   const [bills, setBills] = useState<any[]>([]);
   
   const [dlMsg, setDlMsg] = useState("");
@@ -595,6 +924,7 @@ export default function App() {
       caddr,
       cgstin,
       applyGst,
+      discount,
       rows: JSON.parse(JSON.stringify(rows))
     };
     setUndoStack(prev => [...prev, snapshot]);
@@ -611,6 +941,8 @@ export default function App() {
     rows: [],
     applyGst: true,
     currentItem: { p: "", h: "", q: "", r: "" },
+    pendingCommand: null,
+    productSuggestions: [],
     history: []
   });
 
@@ -628,40 +960,56 @@ export default function App() {
 
   const FSM_PROMPTS: Record<string, { en: string; te: string }> = {
     COLLECTING_DOC_TYPE: {
-      en: "What type of document would you like to make? You can say GST Invoice, Quotation, or Cash Memo.",
-      te: "నమస్తే! బిల్లు తయారు చేద్దామా. ఏ రకం బిల్లు కావాలి? GST ఇన్వాయిస్, కొటేషన్, లేదా క్యాష్ మెమో అని చెప్పండి."
+      en: "Hello! Let's get started on your billing. What type of document are we making today? You can say GST Invoice, Quotation, or Cash Memo.",
+      te: "నమస్తే అండీ! బిల్లింగ్ చేద్దామా. ఈరోజు ఏ రకం బిల్లు తయారు చేయాలి? GST ఇన్వాయిస్, కొటేషన్, లేదా క్యాష్ మెమో చెప్పండి."
     },
     COLLECTING_CUSTOMER_NAME: {
-      en: "Great! What is the customer's name?",
-      te: "మంచిది! కస్టమర్ పేరు ఏమిటి?"
+      en: "Which customer are we billing today?",
+      te: "ఈ బిల్లు ఏ కస్టమర్ పేరు మీద తయారు చేయాలి?"
     },
     COLLECTING_CUSTOMER_ADDR: {
-      en: "Do you know the customer's address? You can speak the location or say 'skip'.",
-      te: "కస్టమర్ అడ్రస్ తెలుసా? అడ్రస్ చెప్పండి లేదా 'స్కిప్' అని అనండి."
+      en: "Where is this customer located? You can speak the address or just say 'skip' if you don't need it.",
+      te: "కస్టమర్ అడ్రస్ లేదా ఊరి పేరు చెప్తారా? లేదంటే 'స్కిప్' అనండి."
     },
     COLLECTING_ITEM_NAME: {
-      en: "Let's add some products. What is the name of the product?",
-      te: "ఇప్పుడు ప్రోడక్ట్స్ యాడ్ చేద్దాం. ప్రోడక్ట్ పేరు చెప్పండి (అయిపోతే 'అయిపోయింది' అనండి)."
+      en: "What would you like to add? Let me know the product name.",
+      te: "ఏ ఐటమ్స్ యాడ్ చేద్దాం? ప్రోడక్ట్ పేరు చెప్పండి (అయిపోతే 'అంతే' లేదా 'పూర్తయింది' చెప్పండి)."
     },
     COLLECTING_ITEM_QTY: {
-      en: "What is the quantity?",
-      te: "క్వాంటిటీ ఎంత?"
+      en: "How many of these would you like to add?",
+      te: "దీని క్వాంటిటీ ఎంతో చెప్తారా?"
     },
     COLLECTING_ITEM_RATE: {
-      en: "What is the rate per unit?",
-      te: "ఒక్కదాని ధర ఎంత?"
+      en: "How much are we charging per unit?",
+      te: "ఒక్కదాని ధర ఎంత వేద్దాం?"
     },
     CONFIRMING_TAX: {
-      en: "Would you like to apply GST?",
-      te: "GST అప్లై చేయాలా?"
+      en: "Shall I include GST for this invoice?",
+      te: "దీనికి GST వర్తింపజేయాలా?"
     },
     SUMMARY_REVIEW: {
-      en: "Invoice ready. Generate PDF invoice now?",
-      te: "బిల్లు అంతా సిద్ధంగా ఉంది. ఇన్‌వాయిస్ పిడిఎఫ్ జనరేట్ చేయాలా?"
+      en: "Everything looks good! Would you like me to generate and download the invoice now?",
+      te: "బిల్లు అంతా సిద్ధంగా ఉంది అండీ. ఇన్‌వాయిస్ పిడిఎఫ్ డౌన్‌లోడ్ చేయమంటారా?"
+    },
+    CLARIFYING_DUPLICATE: {
+      en: "This product is already on the invoice. Shall I merge the quantities, or would you prefer a separate line item?",
+      te: "ఈ ఐటమ్ ఇప్పటికే బిల్లులో ఉంది. క్వాంటిటీని కలపమంటారా (merge) లేదా వేరే వరుసగా రాయమంటారా (separate)?"
+    },
+    CLARIFYING_RATE_AMBIGUITY: {
+      en: "Just double-checking the rate. Did you mean ₹50, ₹500, or ₹5000?",
+      te: "ఒక్కసారి ధర కన్ఫర్మ్ చేయండి. మీరు ₹50 చెప్పారా, ₹500 చెప్పారా లేక ₹5000 చెప్పారా?"
+    },
+    CLARIFYING_PRODUCT_SUGGESTION: {
+      en: "I found a few similar items in the catalog. Which one did you mean?",
+      te: "మన కేటలాగ్‌లో కొన్ని సరిపోలే ప్రోడక్ట్స్ కనిపించాయి. ఇందులో ఏది యాడ్ చేయాలి?"
+    },
+    CONFIRMING_DESTRUCTIVE: {
+      en: "Are you sure you'd like to perform this action? This will clear or cancel the invoice.",
+      te: "మీరు ఖచ్చితంగా ఈ ఇన్వాయిస్‌ను రీసెట్ లేదా క్యాన్సిల్ చేయాలనుకుంటున్నారా?"
     },
     COMPLETE: {
-      en: "Invoice generated successfully! PDF downloaded.",
-      te: "ఇన్‌వాయిస్ విజయవంతంగా జనరేట్ అయింది! PDF డౌన్‌లోడ్ చేసాము."
+      en: "Your invoice is ready! The PDF has been downloaded successfully.",
+      te: "మీ ఇన్వాయిస్ రెడీ అయిపోయింది అండీ! PDF కూడా డౌన్‌లోడ్ చేసాము."
     }
   };
 
@@ -805,13 +1153,41 @@ export default function App() {
     }
   };
 
+  const matchProduct = (inputName: string): { matches: string[]; exact: boolean } => {
+    const cleanInput = inputName.toLowerCase().trim();
+    const exactMatch = catalog.find(item => item.name.toLowerCase() === cleanInput);
+    if (exactMatch) {
+      return { matches: [exactMatch.name], exact: true };
+    }
+
+    // Check substring matches
+    const substringMatches = catalog.filter(item => 
+      item.name.toLowerCase().includes(cleanInput) || cleanInput.includes(item.name.toLowerCase())
+    );
+    if (substringMatches.length > 0) {
+      return { matches: substringMatches.map(m => m.name), exact: substringMatches.length === 1 };
+    }
+
+    // Fuzzy matching using Levenshtein distance
+    const suggestions = catalog
+      .map(item => ({
+        name: item.name,
+        distance: getLevenshteinDistance(cleanInput, item.name.toLowerCase())
+      }))
+      .filter(item => item.distance <= 3)
+      .sort((a, b) => a.distance - b.distance)
+      .map(item => item.name);
+
+    return { matches: suggestions, exact: false };
+  };
+
   const handleFsmTransition = async (aiParsed: any, rawText: string) => {
     if (!aiParsed || typeof aiParsed !== "object") {
       console.warn("Invalid FSM dialog structure. Invoking rules fallback.");
       aiParsed = fallbackParseInput(rawText, fsmState, language);
     }
 
-    const {
+    let {
       value = null,
       intent = "NEXT",
       corrections = {},
@@ -821,7 +1197,403 @@ export default function App() {
     
     let nextContext = { ...fsmContext };
 
+    // --- Layer 3: Command Validation Layer ---
+    const runValidationChecks = (cmd: any): { valid: boolean; stateChange?: string; errorMsgEn?: string; errorMsgTe?: string; teFeedback?: string; updatedCmd?: any } => {
+      if (!cmd || typeof cmd !== "object") return { valid: true };
+      const { type, data } = cmd;
+
+      if (type === "ADD_ITEM") {
+        const parsedName = translateOrTransliterateTelugu(data.p || "Item");
+        const matchResult = matchProduct(parsedName);
+        let pName = parsedName;
+
+        if (matchResult.exact && matchResult.matches.length === 1) {
+          pName = matchResult.matches[0];
+          data.p = pName; // auto-correct in command payload!
+        } else if (!matchResult.exact && matchResult.matches.length > 1) {
+          // Ambiguous match! Transition to CLARIFYING_PRODUCT_SUGGESTION
+          nextContext.pendingCommand = cmd;
+          nextContext.productSuggestions = matchResult.matches;
+          const optionsStr = matchResult.matches.map((m, idx) => `${idx + 1}. ${m}`).join(", ");
+          return {
+            valid: false,
+            stateChange: "CLARIFYING_PRODUCT_SUGGESTION",
+            errorMsgEn: `I found multiple matching products in the catalog. Did you mean: ${optionsStr}?`,
+            teFeedback: `చాలా మ్యాచింగ్ ఐటమ్స్ ఉన్నాయి.`,
+            errorMsgTe: `కేటలాగ్‌లో కొన్ని సరిపోలే ప్రోడక్ట్స్ కనిపించాయి. మీరు ఏది ఉద్దేశించారు: ${optionsStr}?`
+          };
+        }
+
+        const lowerName = pName.toLowerCase().trim();
+
+        // 1. Invalid / Negative / Zero Quantity Check
+        const parsedQtyVal = parseFloat(String(data.q));
+        if (data.q !== null && data.q !== undefined && (isNaN(parsedQtyVal) || parsedQtyVal <= 0)) {
+          nextContext.currentItem = { p: pName, h: "", q: "", r: String(data.r || "0") };
+          return {
+            valid: false,
+            stateChange: "COLLECTING_ITEM_QTY",
+            errorMsgEn: `Quantity must be greater than zero. How many ${pName} would you like to add?`,
+            errorMsgTe: `క్వాంటిటీ సున్నా కంటే ఎక్కువ ఉండాలి. దయచేసి ${pName} క్వాంటిటీ ఎంతో చెప్పండి.`
+          };
+        }
+
+        // Missing Quantity Check
+        if (data.q === null || data.q === undefined) {
+          nextContext.currentItem = { p: pName, h: "", q: "", r: String(data.r || "0") };
+          return {
+            valid: false,
+            stateChange: "COLLECTING_ITEM_QTY",
+            errorMsgEn: `How many ${pName} would you like to add?`,
+            errorMsgTe: `దయచేసి ${pName} క్వాంటిటీ ఎంత చెప్పండి.`
+          };
+        }
+
+        // 2. Invalid / Negative / Zero Rate Check
+        const parsedRateVal = parseFloat(String(data.r));
+        if (data.r !== null && data.r !== undefined && (isNaN(parsedRateVal) || parsedRateVal <= 0)) {
+          const finalQty = `${data.q} ${data.u || "Nos"}`;
+          nextContext.currentItem = { p: pName, h: "", q: finalQty, r: "" };
+          return {
+            valid: false,
+            stateChange: "COLLECTING_ITEM_RATE",
+            errorMsgEn: `Rate must be greater than zero. What is the rate for ${pName}?`,
+            errorMsgTe: `ధర సున్నా కంటే ఎక్కువ ఉండాలి. దయచేసి ${pName} ధర ఎంతో చెప్పండి.`
+          };
+        }
+
+        // Missing Rate Check
+        if (data.r === null || data.r === undefined) {
+          const finalQty = `${data.q} ${data.u || "Nos"}`;
+          nextContext.currentItem = { p: pName, h: "", q: finalQty, r: "" };
+          return {
+            valid: false,
+            stateChange: "COLLECTING_ITEM_RATE",
+            errorMsgEn: `What is the rate for ${pName}?`,
+            errorMsgTe: `దయచేసి ${pName} ధర ఎంత చెప్పండి.`
+          };
+        }
+
+        // 3. Ambiguous Rate Check (e.g. rate 50 for motors/pumps/starters/condensers)
+        const parsedRate = parseFloat(String(data.r));
+        const ambiguousWords = ["motor", "starter", "pump", "aquatex", "texmo", "condenser", "rewinding"];
+        const isAmbiguousMachine = ambiguousWords.some(w => lowerName.includes(w));
+        if (isAmbiguousMachine && parsedRate > 0 && parsedRate <= 100) {
+          nextContext.pendingCommand = cmd;
+          return {
+            valid: false,
+            stateChange: "CLARIFYING_RATE_AMBIGUITY",
+            errorMsgEn: `I detected an ambiguous rate of ₹${parsedRate} for ${pName}. Did you mean: ₹${parsedRate}, ₹${parsedRate * 10}, or ₹${parsedRate * 100}?`,
+            teFeedback: `ధర అస్పష్టంగా ఉంది.`,
+            errorMsgTe: `మీరు ${pName} కి ₹${parsedRate} చెప్పారా, లేక ₹${parsedRate * 10} లేదా ₹${parsedRate * 100} నా?`
+          };
+        }
+
+        // 4. Duplicate Item Check
+        const isDuplicate = rows.some(r => r.p && r.p.toLowerCase().trim() === lowerName);
+        if (isDuplicate) {
+          nextContext.pendingCommand = cmd;
+          return {
+            valid: false,
+            stateChange: "CLARIFYING_DUPLICATE",
+            errorMsgEn: `${pName} already exists in the invoice. Would you like to merge quantities or create a separate line item?`,
+            teFeedback: `ఈ ఐటమ్ ఇప్పటికే బిల్లులో ఉంది.`,
+            errorMsgTe: `${pName} ఇప్పటికే బిల్లులో ఉంది. క్వాంటిటీని కలపాలా (merge) లేక కొత్త వరుసగా యాడ్ చేయాలా (separate)?`
+          };
+        }
+      }
+
+      if (type === "ADD_MULTI_ITEMS") {
+        const items = data.items || [];
+        for (let i = 0; i < items.length; i++) {
+          const singleCmd = { type: "ADD_ITEM", data: items[i] };
+          const check = runValidationChecks(singleCmd);
+          if (!check.valid) {
+            // Keep track of which multi-item failed
+            nextContext.pendingCommand = cmd;
+            return check;
+          }
+        }
+      }
+
+      if (type === "CHANGE_QUANTITY") {
+        const qVal = parseFloat(String(data.q));
+        if (isNaN(qVal) || qVal <= 0) {
+          return {
+            valid: false,
+            stateChange: fsmState,
+            errorMsgEn: "Quantity must be a positive number greater than zero.",
+            errorMsgTe: "క్వాంటిటీ ఖచ్చితంగా సున్నా కంటే ఎక్కువ ఉండాలి."
+          };
+        }
+      }
+
+      if (type === "CHANGE_RATE") {
+        const rVal = parseFloat(String(data.r));
+        if (isNaN(rVal) || rVal <= 0) {
+          return {
+            valid: false,
+            stateChange: fsmState,
+            errorMsgEn: "Rate must be a positive number greater than zero.",
+            errorMsgTe: "ధర ఖచ్చితంగా సున్నా కంటే ఎక్కువ ఉండాలి."
+          };
+        }
+      }
+
+      if (type === "APPLY_DISCOUNT") {
+        const percent = parseFloat(String(data.percent));
+        if (isNaN(percent) || percent < 0 || percent > 100) {
+          return {
+            valid: false,
+            stateChange: fsmState,
+            errorMsgEn: "Discount percentage must be between 0 and 100.",
+            errorMsgTe: "డిస్కౌంట్ శాతం 0 నుండి 100 లోపు మాత్రమే ఉండాలి."
+          };
+        }
+      }
+
+      return { valid: true };
+    };
+
+    // Intercept clarifying states first
+    if (fsmState === "CLARIFYING_DUPLICATE") {
+      const choice = value || "separate";
+      const pending = fsmContext.pendingCommand;
+      nextContext.pendingCommand = null;
+
+      if (pending) {
+        pushToUndo();
+        const pName = translateOrTransliterateTelugu(pending.data.p || "Item");
+        const lowerName = pName.toLowerCase().trim();
+        const qVal = String(pending.data.q || "1").replace(/[^0-9.]/g, "");
+        const rVal = String(pending.data.r || "0").replace(/[^0-9.]/g, "");
+        const unit = pending.data.u || "Nos";
+        
+        const qtyNum = parseFloat(qVal) || 1;
+        const rateNum = parseFloat(rVal) || 0;
+        
+        if (choice === "merge") {
+          // Merge quantities
+          const updatedRows = rows.map(r => {
+            if (r.p && r.p.toLowerCase().trim() === lowerName) {
+              const currentQtyNum = parseFloat(r.q) || 0;
+              const newQtyNum = currentQtyNum + qtyNum;
+              const finalQty = `${newQtyNum} ${unit}`;
+              const amount = Math.round(newQtyNum * rateNum * 100) / 100;
+              return { ...r, q: finalQty, r: rVal, a: amount };
+            }
+            return r;
+          });
+          setRows(updatedRows);
+          nextContext.rows = updatedRows;
+          
+          teFeedback = `క్వాంటిటీని కలిపి అప్‌డేట్ చేసాను`;
+        } else {
+          // Add as separate line item
+          const finalQty = qVal ? `${qVal} ${unit}` : `1 ${unit}`;
+          const amount = Math.round(qtyNum * rateNum * 100) / 100;
+          const newRow = { p: pName, h: "", q: finalQty, r: rVal, a: amount };
+          const updatedRows = [...rows.filter(r => r.p || r.h || r.q || r.r), newRow];
+          setRows(updatedRows);
+          nextContext.rows = updatedRows;
+          
+          teFeedback = `కొత్త వరుసగా చేర్చాను`;
+        }
+      }
+
+      setFsmState("COLLECTING_ITEM_NAME");
+      setFsmContext(nextContext);
+      setActiveFieldFocus("rows-particulars");
+
+      const prompts = FSM_PROMPTS.COLLECTING_ITEM_NAME;
+      const completeMsg = {
+        sender: "ai" as const,
+        text: `Done! I've resolved that duplicate item for you. ${prompts.en}`,
+        teText: `${teFeedback}. ${prompts.te}`,
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      };
+      setChatMessages(prev => [...prev, completeMsg]);
+
+      const speakPhrase = language === "te-IN" ? `${teFeedback}. ${prompts.te}` : `Done! I've resolved that duplicate item for you. ${prompts.en}`;
+      speakText(speakPhrase, language);
+      return;
+    }
+
+    if (fsmState === "CLARIFYING_RATE_AMBIGUITY") {
+      const chosenRate = value || "5000";
+      const pending = fsmContext.pendingCommand;
+      nextContext.pendingCommand = null;
+
+      if (pending) {
+        // Update pending rate and re-run FSM transition
+        if (pending.type === "ADD_ITEM") {
+          pending.data.r = chosenRate;
+        } else if (pending.type === "ADD_MULTI_ITEMS") {
+          // Update the first item in the list that had missing or ambiguous rate
+          const ambiguousWords = ["motor", "starter", "pump", "aquatex", "texmo", "condenser", "rewinding"];
+          for (let i = 0; i < pending.data.items.length; i++) {
+            const it = pending.data.items[i];
+            const lowerName = String(it.p || "").toLowerCase();
+            const isAmbiguous = ambiguousWords.some(w => lowerName.includes(w));
+            const parsedRate = parseFloat(String(it.r));
+            if (isAmbiguous && parsedRate > 0 && parsedRate <= 100) {
+              it.r = chosenRate;
+              break;
+            }
+          }
+        }
+        setFsmState("COLLECTING_ITEM_NAME");
+        setFsmContext(nextContext);
+        // Recursively re-run
+        await handleFsmTransition({ intent: "COMMAND", command: pending }, rawText);
+        return;
+      }
+
+      setFsmState("COLLECTING_ITEM_NAME");
+      setFsmContext(nextContext);
+      return;
+    }
+
+    if (fsmState === "CLARIFYING_PRODUCT_SUGGESTION") {
+      const choice = value;
+      const pending = fsmContext.pendingCommand;
+      nextContext.pendingCommand = null;
+      nextContext.productSuggestions = [];
+
+      let resolvedProduct = "";
+      const suggestions = fsmContext.productSuggestions || [];
+      const parsedIndex = parseInt(String(choice)) - 1;
+
+      if (!isNaN(parsedIndex) && parsedIndex >= 0 && parsedIndex < suggestions.length) {
+        resolvedProduct = suggestions[parsedIndex];
+      } else if (typeof choice === "string" && choice.trim()) {
+        const chosenStr = choice.toLowerCase().trim();
+        const exactMatch = suggestions.find((s: string) => s.toLowerCase().trim() === chosenStr);
+        if (exactMatch) {
+          resolvedProduct = exactMatch;
+        } else {
+          let minDistance = 999;
+          let closestSuggestion = "";
+          suggestions.forEach((s: string) => {
+            const dist = getLevenshteinDistance(chosenStr, s.toLowerCase().trim());
+            if (dist < minDistance) {
+              minDistance = dist;
+              closestSuggestion = s;
+            }
+          });
+          if (minDistance <= 3) {
+            resolvedProduct = closestSuggestion;
+          }
+        }
+      }
+
+      if (pending && resolvedProduct) {
+        if (pending.type === "ADD_ITEM") {
+          pending.data.p = resolvedProduct;
+        } else if (pending.type === "ADD_MULTI_ITEMS") {
+          for (let i = 0; i < pending.data.items.length; i++) {
+            const it = pending.data.items[i];
+            const matchResult = matchProduct(it.p || "");
+            if (!matchResult.exact && matchResult.matches.length > 1) {
+              it.p = resolvedProduct;
+              break;
+            }
+          }
+        }
+        setFsmState("COLLECTING_ITEM_NAME");
+        setFsmContext(nextContext);
+        await handleFsmTransition({ intent: "COMMAND", command: pending }, rawText);
+        return;
+      }
+
+      // If we couldn't resolve, redirect to item name collection gracefully
+      setFsmState("COLLECTING_ITEM_NAME");
+      setFsmContext(nextContext);
+      const prompts = FSM_PROMPTS.COLLECTING_ITEM_NAME;
+      const errorMsg = {
+        sender: "ai" as const,
+        text: `Invalid selection. ${prompts.en}`,
+        teText: `ఎంపిక సరికాదు. ${prompts.te}`,
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      };
+      setChatMessages(prev => [...prev, errorMsg]);
+      speakText(language === "te-IN" ? `ఎంపిక సరికాదు. ${prompts.te}` : `Invalid selection. ${prompts.en}`, language);
+      return;
+    }
+
+    if (fsmState === "CONFIRMING_DESTRUCTIVE") {
+      const isConfirmed = value === true;
+      const pending = fsmContext.pendingCommand;
+      nextContext.pendingCommand = null;
+
+      if (isConfirmed && pending) {
+        if (pending.type === "START_NEW") {
+          resetForm();
+          resetFsm();
+          return;
+        }
+        if (pending.type === "CANCEL") {
+          resetFsm();
+          return;
+        }
+      }
+
+      // If they rejected or no pending command, go back to COLLECTING_ITEM_NAME
+      setFsmState("COLLECTING_ITEM_NAME");
+      setFsmContext(nextContext);
+      
+      const prompts = FSM_PROMPTS.COLLECTING_ITEM_NAME;
+      const cancelBubble = {
+        sender: "ai" as const,
+        text: `Action cancelled. ${prompts.en}`,
+        teText: `రద్దు చేసాము. ${prompts.te}`,
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      };
+      setChatMessages(prev => [...prev, cancelBubble]);
+      speakText(language === "te-IN" ? `రద్దు చేసాము. ${prompts.te}` : `Action cancelled. ${prompts.en}`, language);
+      return;
+    }
+
     if (intent === "COMMAND" || command) {
+      // Intercept destructive commands for confirmation lock
+      if (command && (command.type === "START_NEW" || command.type === "CANCEL")) {
+        nextContext.pendingCommand = command;
+        setFsmState("CONFIRMING_DESTRUCTIVE");
+        setFsmContext(nextContext);
+
+        const prompts = FSM_PROMPTS.CONFIRMING_DESTRUCTIVE;
+        const confirmBubble = {
+          sender: "ai" as const,
+          text: prompts.en,
+          teText: prompts.te,
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        };
+        setChatMessages(prev => [...prev, confirmBubble]);
+        speakText(language === "te-IN" ? prompts.te : prompts.en, language);
+        return;
+      }
+
+      // Run Layer 3 validation checks
+      const validation = runValidationChecks(command);
+      if (!validation.valid) {
+        setFsmState(validation.stateChange!);
+        setFsmContext(nextContext);
+        if (validation.stateChange === "COLLECTING_ITEM_QTY") setActiveFieldFocus("rows-qty");
+        else if (validation.stateChange === "COLLECTING_ITEM_RATE") setActiveFieldFocus("rows-rate");
+
+        const errorBubble = {
+          sender: "ai" as const,
+          text: validation.errorMsgEn!,
+          teText: validation.errorMsgTe!,
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        };
+        setChatMessages(prev => [...prev, errorBubble]);
+
+        const speakPhrase = language === "te-IN" ? validation.errorMsgTe! : validation.errorMsgEn!;
+        speakText(speakPhrase, language);
+        return;
+      }
+
       pushToUndo();
       const { type, data } = command;
       
@@ -875,6 +1647,15 @@ export default function App() {
           nextContext.rows = updatedRows;
           break;
         }
+        case "REMOVE_LAST_ITEM": {
+          const updatedRows = [...rows];
+          if (updatedRows.length > 0) {
+            updatedRows.pop();
+          }
+          setRows(updatedRows);
+          nextContext.rows = updatedRows;
+          break;
+        }
         case "CHANGE_QUANTITY": {
           const searchName = String(data.p || "").toLowerCase().trim();
           const newQ = String(data.q || "1").replace(/[^0-9.]/g, "");
@@ -909,6 +1690,12 @@ export default function App() {
           });
           setRows(updatedRows);
           nextContext.rows = updatedRows;
+          break;
+        }
+        case "APPLY_DISCOUNT": {
+          const percent = parseFloat(data.percent) || 0;
+          setDiscount(percent);
+          nextContext.discount = percent;
           break;
         }
         case "APPLY_GST": {
@@ -950,6 +1737,105 @@ export default function App() {
           resetFsm();
           break;
         }
+        case "CHANGE_CUSTOMER_NAME": {
+          const name = translateOrTransliterateTelugu(data.name);
+          setCname(name);
+          nextContext.cname = name;
+          teFeedback = `కస్టమర్ పేరును ${name} గా మార్చాము`;
+          break;
+        }
+        case "CHANGE_CUSTOMER_ADDR": {
+          const addr = translateOrTransliterateTelugu(data.addr);
+          setCaddr(addr);
+          nextContext.caddr = addr;
+          teFeedback = `అడ్రస్‌ను ${addr} గా మార్చాము`;
+          break;
+        }
+        case "CHANGE_PO": {
+          const poVal = data.po;
+          setPo(poVal);
+          nextContext.po = poVal;
+          teFeedback = `PO నెంబర్‌ను ${poVal} గా మార్చాము`;
+          break;
+        }
+        case "CHANGE_TRANSPORT": {
+          const transp = translateOrTransliterateTelugu(data.transport);
+          setTransport(transp);
+          nextContext.transport = transp;
+          teFeedback = `ట్రాన్స్‌పోర్ట్‌ను ${transp} గా మార్చాము`;
+          break;
+        }
+        case "CHANGE_DOC_TYPE": {
+          const docT = data.btype;
+          setBtype(docT);
+          nextContext.btype = docT;
+          teFeedback = `బిల్లు రకాన్ని ${docT} గా మార్చాము`;
+          break;
+        }
+        case "CHANGE_DATE": {
+          const dt = data.date;
+          setDate(dt);
+          nextContext.date = dt;
+          teFeedback = `తేదీని ${dt} గా మార్చాము`;
+          break;
+        }
+        case "SORT_BY_AMOUNT": {
+          const filteredRows = rows.filter(r => r.p || r.h || r.q || r.r);
+          const sorted = [...filteredRows].sort((a, b) => (b.a || 0) - (a.a || 0));
+          setRows(sorted);
+          nextContext.rows = sorted;
+          teFeedback = "ధరల ప్రకారం ఐటమ్స్ అమర్చాము";
+          break;
+        }
+        case "SORT_BY_NAME": {
+          const filteredRows = rows.filter(r => r.p || r.h || r.q || r.r);
+          const sorted = [...filteredRows].sort((a, b) => a.p.localeCompare(b.p));
+          setRows(sorted);
+          nextContext.rows = sorted;
+          teFeedback = "పేర్ల ప్రకారం ఐటమ్స్ అమర్చాము";
+          break;
+        }
+        case "MOVE_ROW": {
+          const from = parseInt(data.from) - 1;
+          const to = parseInt(data.to) - 1;
+          const filteredRows = rows.filter(r => r.p || r.h || r.q || r.r);
+          if (from >= 0 && from < filteredRows.length && to >= 0 && to < filteredRows.length) {
+            const updated = [...filteredRows];
+            const [moved] = updated.splice(from, 1);
+            updated.splice(to, 0, moved);
+            setRows(updated);
+            nextContext.rows = updated;
+            teFeedback = `${from + 1} వరుసను ${to + 1} కి మార్చాము`;
+          } else {
+            teFeedback = "వరుస నెంబర్ సరికాదు";
+          }
+          break;
+        }
+        case "REMOVE_ROW_BY_INDEX": {
+          const idx = parseInt(data.index) - 1;
+          const filteredRows = rows.filter(r => r.p || r.h || r.q || r.r);
+          if (idx >= 0 && idx < filteredRows.length) {
+            const removedItem = filteredRows[idx].p || "Item";
+            const updated = filteredRows.filter((_, i) => i !== idx);
+            setRows(updated);
+            nextContext.rows = updated;
+            teFeedback = `${removedItem} ని తీసివేసాము`;
+          } else {
+            teFeedback = "ఐటమ్ నెంబర్ సరికాదు";
+          }
+          break;
+        }
+        case "SAVE_DRAFT": {
+          const draft = {
+            state: fsmState,
+            context: fsmContext,
+            messages: chatMessages
+          };
+          try {
+            localStorage.setItem('svs_active_conv', JSON.stringify(draft));
+          } catch (e) {}
+          break;
+        }
         case "UNDO": {
           const newUndoStack = [...undoStack];
           newUndoStack.pop(); // discard snapshot we just pushed
@@ -962,11 +1848,13 @@ export default function App() {
             setCaddr(prevSnapshot.caddr);
             setCgstin(prevSnapshot.cgstin);
             setApplyGst(prevSnapshot.applyGst);
+            setDiscount(prevSnapshot.discount !== undefined ? prevSnapshot.discount : 0);
             setRows(prevSnapshot.rows);
             nextContext.rows = prevSnapshot.rows;
             nextContext.cname = prevSnapshot.cname;
             nextContext.caddr = prevSnapshot.caddr;
             nextContext.applyGst = prevSnapshot.applyGst;
+            nextContext.discount = prevSnapshot.discount !== undefined ? prevSnapshot.discount : 0;
           }
           break;
         }
@@ -982,11 +1870,13 @@ export default function App() {
               setCaddr(nextSnapshot.caddr);
               setCgstin(nextSnapshot.cgstin);
               setApplyGst(nextSnapshot.applyGst);
+              setDiscount(nextSnapshot.discount !== undefined ? nextSnapshot.discount : 0);
               setRows(nextSnapshot.rows);
               nextContext.rows = nextSnapshot.rows;
               nextContext.cname = nextSnapshot.cname;
               nextContext.caddr = nextSnapshot.caddr;
               nextContext.applyGst = nextSnapshot.applyGst;
+              nextContext.discount = nextSnapshot.discount !== undefined ? nextSnapshot.discount : 0;
             }
           }
           break;
@@ -995,11 +1885,84 @@ export default function App() {
           break;
       }
       
+      let friendlyText = "";
+      switch (type) {
+        case "ADD_ITEM":
+          friendlyText = `Done. I've added ${data.p || "the item"} to the invoice.`;
+          break;
+        case "ADD_MULTI_ITEMS":
+          friendlyText = `Got it. I've added all those items to the invoice.`;
+          break;
+        case "REMOVE_ITEM":
+          friendlyText = `Okay, I've removed ${data.p || "the item"} from the invoice.`;
+          break;
+        case "REMOVE_LAST_ITEM":
+          friendlyText = `Done, I've removed the last item.`;
+          break;
+        case "CHANGE_QUANTITY":
+          friendlyText = `Got it. I've updated the quantity to ${data.q}.`;
+          break;
+        case "CHANGE_RATE":
+          friendlyText = `Done. I've updated the rate to ₹${data.r}.`;
+          break;
+        case "APPLY_DISCOUNT":
+          friendlyText = `Applied a ${data.percent}% discount to the invoice.`;
+          break;
+        case "APPLY_GST":
+          friendlyText = `GST is now included in the total.`;
+          break;
+        case "REMOVE_GST":
+          friendlyText = `Okay, GST has been removed from this invoice.`;
+          break;
+        case "CHANGE_CUSTOMER_NAME":
+          friendlyText = `Done, customer name is now updated to ${data.name}.`;
+          break;
+        case "CHANGE_CUSTOMER_ADDR":
+          friendlyText = `Got it. I've updated the address to ${data.addr}.`;
+          break;
+        case "CHANGE_PO":
+          friendlyText = `Done. I've updated the PO number to ${data.po}.`;
+          break;
+        case "CHANGE_TRANSPORT":
+          friendlyText = `Got it. I've updated the transport mode to ${data.transport}.`;
+          break;
+        case "CHANGE_DOC_TYPE":
+          friendlyText = `Okay, I've changed the billing document type to ${data.btype?.toUpperCase()}.`;
+          break;
+        case "CHANGE_DATE":
+          friendlyText = `Done. The invoice date is now updated to ${data.date}.`;
+          break;
+        case "SORT_BY_AMOUNT":
+          friendlyText = `I've sorted the items by total amount.`;
+          break;
+        case "SORT_BY_NAME":
+          friendlyText = `I've sorted the items alphabetically by name.`;
+          break;
+        case "MOVE_ROW":
+          friendlyText = `Done, I've moved that item to position ${data.to}.`;
+          break;
+        case "REMOVE_ROW_BY_INDEX":
+          friendlyText = `Removed the item at position ${data.index}.`;
+          break;
+        case "UNDO":
+          friendlyText = `Undone. I've reverted the last change.`;
+          break;
+        case "REDO":
+          friendlyText = `Redone. I've re-applied the action.`;
+          break;
+        case "SAVE_DRAFT":
+          friendlyText = `I've successfully saved a draft of this invoice.`;
+          break;
+        default:
+          friendlyText = `Command executed: ${type.replace("_", " ")}.`;
+          break;
+      }
+
       setFsmContext(nextContext);
       
       const feedbackBubble = {
         sender: "ai" as const,
-        text: `Command executed: ${type.replace("_", " ")}.`,
+        text: friendlyText,
         teText: teFeedback || `ఆదేశాన్ని అమలు చేసాను.`,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
       };
@@ -1007,7 +1970,7 @@ export default function App() {
       
       const speakPhrase = language === "te-IN" 
         ? (teFeedback || "ఆదేశాన్ని అమలు చేసాను.") 
-        : `Command executed: ${type.replace("_", " ")}.`;
+        : friendlyText;
       speakText(speakPhrase, language);
       return;
     }
@@ -1156,7 +2119,23 @@ export default function App() {
         const rawVal = String(value || "1");
         const sanitizedVal = rawVal.replace(/[^0-9.]/g, "");
         const finalVal = sanitizedVal || "1";
-        nextContext.currentItem.q = finalVal;
+        
+        let detectedUnit = "Nos";
+        const unitsList = [
+          "feet", "foot", "meter", "meters", "inch", "inches", "yard", "yards",
+          "kg", "kilogram", "kilograms", "gram", "grams", "liter", "liters", "litre", "litres",
+          "piece", "pieces", "unit", "units", "bundle", "bundles", "roll", "rolls",
+          "box", "boxes", "pack", "packs", "nos", "no", "number", "numbers"
+        ];
+        const cleanT = rawText.toLowerCase();
+        for (const u of unitsList) {
+          if (cleanT.includes(u)) {
+            detectedUnit = u.charAt(0).toUpperCase() + u.slice(1);
+            break;
+          }
+        }
+
+        nextContext.currentItem.q = `${finalVal} ${detectedUnit}`;
         nextState = "COLLECTING_ITEM_RATE";
         setActiveFieldFocus("rows-rate");
         break;
@@ -1167,14 +2146,14 @@ export default function App() {
         const finalVal = sanitizedVal || "0";
         nextContext.currentItem.r = finalVal;
         
-        const qty = parseFloat(nextContext.currentItem.q) || 0;
-        const rate = parseFloat(finalVal) || 0;
-        const amount = Math.round(qty * rate * 100) / 100;
+        const qtyNum = parseFloat(nextContext.currentItem.q) || 1;
+        const rateNum = parseFloat(finalVal) || 0;
+        const amount = Math.round(qtyNum * rateNum * 100) / 100;
         
         const newRow = {
           p: nextContext.currentItem.p,
           h: "",
-          q: nextContext.currentItem.q,
+          q: nextContext.currentItem.q.includes(" ") ? nextContext.currentItem.q : `${nextContext.currentItem.q} Nos`,
           r: finalVal,
           a: amount
         };
@@ -1230,7 +2209,7 @@ export default function App() {
             ...prev,
             {
               sender: "ai" as const,
-              text: `Acknowledged.`,
+              text: `Got it.`,
               teText: teFeedback,
               timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
             },
@@ -1351,13 +2330,13 @@ export default function App() {
     const newRows = [...rows];
     (newRows[i] as any)[field] = val;
     
-    const q = parseFloat(newRows[i].q) || 0;
-    const r = parseFloat(newRows[i].r) || 0;
+    const q = parseFloat(newRows[i].q);
+    const r = parseFloat(newRows[i].r);
     
-    if (q > 0 && r > 0) {
+    if (!isNaN(q) && !isNaN(r) && q >= 0 && r >= 0) {
       newRows[i].a = Math.round(q * r * 100) / 100;
-    } else if (field === 'a') {
-      newRows[i].a = parseFloat(val) || 0;
+    } else {
+      newRows[i].a = 0;
     }
     setRows(newRows);
   };
@@ -1369,17 +2348,19 @@ export default function App() {
   };
 
   const sub = rows.reduce((s, x) => s + (parseFloat(x.a as any) || 0), 0);
+  const discountAmt = Math.round(sub * (discount / 100) * 100) / 100;
+  const subAfterDiscount = sub - discountAmt;
   const isGst = applyGst && btype !== 'cash';
-  const cgst = isGst ? Math.round(sub * 0.09 * 100) / 100 : 0;
-  const sgst = isGst ? Math.round(sub * 0.09 * 100) / 100 : 0;
-  const grand = sub + cgst + sgst;
+  const cgst = isGst ? Math.round(subAfterDiscount * 0.09 * 100) / 100 : 0;
+  const sgst = isGst ? Math.round(subAfterDiscount * 0.09 * 100) / 100 : 0;
+  const grand = subAfterDiscount + cgst + sgst;
 
   const fmtD = (n: number) => 'Rs. ' + (Math.round(n * 100) / 100).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
   const getData = () => ({
     type: btype, no, date, po, transport, cname, caddr, cgstin,
     sname, saddr, sgstin, rows, applyGst: isGst,
-    sub, cgst, sgst, grand, saved: new Date().toISOString(), signatureUrl
+    sub, discount, discountAmt, subAfterDiscount, cgst, sgst, grand, saved: new Date().toISOString(), signatureUrl
   });
 
   const handleSignatureUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1474,6 +2455,7 @@ export default function App() {
     setCaddr(''); setSname(''); setSaddr(''); setSgstin(''); setPo(''); setTransport('');
     setCname('AVENUE SUPERMARTS LTD');
     setCgstin('36BXYPS4294L1Z7');
+    setDiscount(0);
     setRows([{ p: "", h: "", q: "", r: "", a: 0 }, { p: "", h: "", q: "", r: "", a: 0 }, { p: "", h: "", q: "", r: "", a: 0 }]);
     const nums = bills.map((b: any) => parseInt(b.no)).filter((n: number) => !isNaN(n));
     setNo(String(nums.length ? Math.max(...nums) + 1 : 1).padStart(3, '0'));
@@ -1485,7 +2467,7 @@ export default function App() {
     if (activeSec === 'preview') {
       setPreviewHtml(invHTML(getData()));
     }
-  }, [activeSec, btype, no, date, po, transport, cname, caddr, cgstin, sname, saddr, sgstin, rows, applyGst, signatureUrl]);
+  }, [activeSec, btype, no, date, po, transport, cname, caddr, cgstin, sname, saddr, sgstin, rows, applyGst, signatureUrl, discount]);
 
   const downloadPDF = () => {
     setIsDownloading(true);

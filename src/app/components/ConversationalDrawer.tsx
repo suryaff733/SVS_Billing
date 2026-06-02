@@ -96,6 +96,19 @@ export default function ConversationalDrawer({
           { label: "Generate Invoice (అవును)", value: "Yes" },
           { label: "Cancel (వద్దు)", value: "Cancel" },
         ];
+      case "CLARIFYING_PRODUCT_SUGGESTION":
+        if (contextData && contextData.productSuggestions) {
+          return contextData.productSuggestions.map((s: string, idx: number) => ({
+            label: `${idx + 1}. ${s}`,
+            value: String(idx + 1),
+          }));
+        }
+        return [];
+      case "CONFIRMING_DESTRUCTIVE":
+        return [
+          { label: "Yes, reset/cancel (అవును)", value: "Yes" },
+          { label: "No (వద్దు)", value: "No" },
+        ];
       default:
         return [];
     }
@@ -341,7 +354,7 @@ export default function ConversationalDrawer({
             borderTop: "1px solid var(--color-border-tertiary)",
           }}
         >
-          {pills.map((p, idx) => (
+          {pills.map((p: any, idx: number) => (
             <button
               key={idx}
               type="button"
